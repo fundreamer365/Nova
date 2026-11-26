@@ -11,19 +11,28 @@ jobs:
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
+
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
 
-      - name: Проверка VERSION и тега
+      - name: Проверка версии и тега
         shell: pwsh
         run: |
           $v = (Select-String -Path nova.py -Pattern '^VERSION\s*=\s*"([^"]+)"').Matches[0].Groups[1].Value
           if ("v$v" -ne "${{ github.ref_name }}") { throw "VERSION=$v не совпадает с тегом ${{ github.ref_name }}" }
 
-      - name: Сборка
-        shell: cmd
-        run: build.bat
+      - name: Установка зависимостей
+        shell: pwsh
+        run: pip install -r requirements.txt pyinstaller
+
+      - name: Сборка exe
+        shell: pwsh
+        run: pyinstaller --noconfirm --clean --onefile --windowed --name Nova --icon icon.png --add-data "icon.png;." --collect-all speech_recognition --collect-all edge_tts --collect-all sounddevice --hidden-import pypdf --hidden-import PIL.ImageGrab nova.py
+
+      - name: Контрольная сумма
+        shell: pwsh
+        run: (Get-FileHash dist\Nova.exe -Algorithm SHA256).Hash.ToLower() | Out-File -Encoding ascii dist\Nova.exe.sha256
 
       - uses: softprops/action-gh-release@v2
         with:
