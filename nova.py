@@ -2,7 +2,7 @@ import sys, os
 if sys.stdout is None: sys.stdout = open(os.devnull, "w")     # exe без консоли: print() не должен падать
 if sys.stderr is None: sys.stderr = open(os.devnull, "w")
 
-VERSION = "7.0.2"                      # ← именно эту строку читает самообновление; при выпуске правь её и тег релиза (v7.0.0)
+VERSION = "7.0.3"                      # ← именно эту строку читает самообновление; при выпуске правь её и тег релиза (v7.0.0)
 REPO = "fundreamer365/Nova"
 
 from difflib import SequenceMatcher
@@ -2240,6 +2240,7 @@ class App(QMainWindow):
         entry("Модель", "ai_model")
         entry("API-ключ ИИ (enter.pollinations.ai)", "ai_key")
         entry("Адрес ИИ (пусто = по умолчанию)", "ai_url")
+        btn("Получить API-ключ (откроется сайт)", lambda: webbrowser.open("https://enter.pollinations.ai"))
         slider("Сообщений в контексте", "history_len", 2, 30)
         slider("Таймаут ответа, с", "ai_timeout", 10, 120)
 
