@@ -1,0 +1,128 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Нова — голосовой помощник для Windows</title>
+<style>
+:root{--bg:#0b0d1a;--panel:#151932;--card:#1f2547;--text:#eceeff;--mute:#9aa1d4;--pink:#ff6b8b;--vio:#7c5cff;--cyan:#38e1e6;color-scheme:dark;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+*,*::before,*::after{box-sizing:inherit}
+html{scroll-padding-top:env(safe-area-inset-top,0px)}
+body{margin:0;background:var(--bg);color:var(--text);font-family:'Segoe UI',system-ui,-apple-system,Roboto,sans-serif;line-height:1.6;-webkit-font-smoothing:antialiased}
+main{max-width:880px;margin:0 auto;padding:0 24px 64px}
+.hero{display:flex;flex-direction:column;align-items:center;text-align:center;padding-top:40px}
+canvas{width:min(340px,80vw);height:min(340px,80vw)}
+h1{font-size:clamp(40px,8vw,68px);line-height:1.05;margin:4px 0 14px;font-weight:700;letter-spacing:-.02em}
+.lead{max-width:30em;margin:0 auto 28px;color:var(--mute);font-size:19px}
+.btn{display:inline-block;background:var(--cyan);color:#07202a;font-weight:700;font-size:18px;text-decoration:none;padding:15px 34px;border-radius:999px;transition:background .15s,transform .15s}
+.btn:hover{background:#7cf0f4}
+.btn:active{transform:scale(.98)}
+a:focus-visible,summary:focus-visible{outline:3px solid var(--pink);outline-offset:3px}
+.meta{margin:14px 0 0;color:var(--mute);font-size:14px}
+section{margin-top:72px}
+h2{font-size:26px;margin:0 0 20px;font-weight:700}
+dl{margin:0;display:grid;grid-template-columns:minmax(0,13em) minmax(0,1fr);gap:0 28px}
+dt{font-weight:600;color:var(--cyan);padding:14px 0;border-top:1px solid var(--card)}
+dd{margin:0;padding:14px 0;border-top:1px solid var(--card);color:var(--text)}
+dd q{color:var(--mute);quotes:"«" "»"}
+.steps{margin:0;padding-left:1.3em;max-width:38em}
+.steps li{margin-bottom:10px;padding-left:6px}
+.steps li::marker{color:var(--pink);font-weight:700}
+details{max-width:38em;background:var(--panel);border-radius:16px;padding:16px 20px;margin-bottom:12px}
+summary{cursor:pointer;font-weight:600}
+details p{margin:10px 0 0;color:var(--mute)}
+footer{margin-top:72px;padding-top:24px;border-top:1px solid var(--card);color:var(--mute);font-size:14px;display:flex;flex-wrap:wrap;gap:8px 24px;justify-content:space-between}
+footer a{color:var(--mute)}
+@media(max-width:640px){dl{grid-template-columns:1fr}dt{padding-bottom:0;border-bottom:0}dd{border-top:0;padding-top:2px}}
+</style>
+</head>
+<body>
+<main>
+  <header class="hero">
+    <canvas id="orb" width="680" height="680" role="img" aria-label="Светящийся шар Новы"></canvas>
+    <h1>Нова</h1>
+    <p class="lead">Голосовой помощник для Windows. Говоришь по-русски, она открывает программы, ищет, считает, ставит таймеры и отвечает как ИИ.</p>
+    <a class="btn" id="dl" href="https://github.com/fundreamer365/Nova/releases/latest/download/Nova.exe">Скачать для Windows</a>
+    <p class="meta">Бесплатно. Один файл Nova.exe, установка не нужна.</p>
+  </header>
+
+  <section aria-labelledby="can">
+    <h2 id="can">Что она умеет</h2>
+    <dl>
+      <dt>Слушает имя</dt><dd>Скажи <q>Нова, открой ютуб</q>, и она ответит голосом. Нажимать ничего не надо.</dd>
+      <dt>Управляет компьютером</dt><dd>Открывает программы и сайты, двигает мышь, жмёт клавиши, переключает рабочие столы, делает скриншоты.</dd>
+      <dt>Видит экран и фото</dt><dd>Можно спросить <q>что у меня на экране?</q> или перетащить в окно картинку и файл.</dd>
+      <dt>Отвечает как ИИ</dt><dd>Любой вопрос, код, объяснение. Длинные ответы показывает текстом, а голосом говорит только суть.</dd>
+      <dt>Помнит тебя</dt><dd>Запоминает имя и факты о тебе. Скажи <q>запомни, что…</q> или <q>забудь всё</q>.</dd>
+      <dt>Делает файлы</dt><dd>Создаёт txt, docx, pdf и другие документы прямо по голосовой команде.</dd>
+      <dt>Таймеры и заметки</dt><dd>Напоминания, будильник, заметки, погода, курс валют, калькулятор.</dd>
+      <dt>Обновляется сама</dt><dd>Когда выходит новая версия, вверху появляется кнопка обновления.</dd>
+    </dl>
+  </section>
+
+  <section aria-labelledby="how">
+    <h2 id="how">Как начать</h2>
+    <ol class="steps">
+      <li>Нажми «Скачать для Windows» и дождись файла Nova.exe.</li>
+      <li>Запусти его. Если Windows покажет синее окно, нажми «Подробнее», затем «Выполнить в любом случае».</li>
+      <li>Разреши доступ к микрофону и скажи: «Нова, что ты умеешь?»</li>
+    </ol>
+  </section>
+
+  <section aria-labelledby="faq">
+    <h2 id="faq">Вопросы</h2>
+    <details>
+      <summary>Почему Windows ругается на файл?</summary>
+      <p>Программа не имеет платной цифровой подписи, поэтому SmartScreen предупреждает о любом новом файле. Исходный код открыт, его можно проверить в репозитории на GitHub.</p>
+    </details>
+    <details>
+      <summary>Куда уходит мой голос?</summary>
+      <p>Распознавание речи работает через сервис Google, а ответы ИИ приходят из интернета. Если отклик на имя не нужен, его можно выключить переключателем в главном окне.</p>
+    </details>
+    <details>
+      <summary>Нужен ли интернет?</summary>
+      <p>Да. Без него не работают распознавание речи, озвучка и ответы ИИ.</p>
+    </details>
+    <details>
+      <summary>Работает ли на Mac или Linux?</summary>
+      <p>Нет, Нова сделана только для Windows 10 и 11.</p>
+    </details>
+  </section>
+
+  <footer>
+    <span>Нова · сделано fundreamer365</span>
+    <span><a href="https://github.com/fundreamer365/Nova">Исходный код</a> · <a href="https://github.com/fundreamer365/Nova/releases">Все версии</a></span>
+  </footer>
+</main>
+
+<script>
+(function(){
+  var cv=document.getElementById('orb'),ctx=cv.getContext('2d'),W=cv.width,H=cv.height;
+  var cols=['#ff6b8b','#7c5cff','#38e1e6'],t=0;
+  var still=window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  function draw(){
+    var amp=0.12+0.05*Math.sin(t*1.7),R=W*0.2,cx=W/2,cy=H/2;
+    ctx.clearRect(0,0,W,H);
+    var rr=R*2.2*(1+amp*0.5),g=ctx.createRadialGradient(cx,cy,0,cx,cy,rr);
+    g.addColorStop(0,'rgba(124,92,255,0.45)');g.addColorStop(1,'rgba(124,92,255,0)');
+    ctx.fillStyle=g;ctx.beginPath();ctx.arc(cx,cy,rr,0,Math.PI*2);ctx.fill();
+    for(var i=0;i<3;i++){
+      ctx.beginPath();
+      for(var k=0;k<=72;k++){
+        var a=k/72*Math.PI*2,
+            n=Math.sin(a*(2+i)+t*1.4+i*2)+Math.sin(a*3-t*1.1),
+            r=R*(1+amp*n*0.9),x=cx+Math.cos(a)*r,y=cy+Math.sin(a)*r;
+        if(k===0)ctx.moveTo(x,y);else ctx.lineTo(x,y);
+      }
+      ctx.closePath();ctx.lineJoin='round';ctx.strokeStyle=cols[i];
+      ctx.globalAlpha=0.22;ctx.lineWidth=20;ctx.stroke();
+      ctx.globalAlpha=1;ctx.lineWidth=5;ctx.stroke();
+    }
+  }
+  function loop(){t+=0.016;draw();requestAnimationFrame(loop)}
+  draw();
+  if(!still)requestAnimationFrame(loop);
+})();
+</script>
+</body>
+</html>
