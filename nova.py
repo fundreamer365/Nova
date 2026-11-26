@@ -2,7 +2,7 @@ import sys, os
 if sys.stdout is None: sys.stdout = open(os.devnull, "w")     # exe без консоли: print() не должен падать
 if sys.stderr is None: sys.stderr = open(os.devnull, "w")
 
-VERSION = "7.0.0"                      # ← именно эту строку читает самообновление; при выпуске правь её и тег релиза (v7.0.0)
+VERSION = "7.0.1"                      # ← именно эту строку читает самообновление; при выпуске правь её и тег релиза (v7.0.0)
 REPO = "fundreamer365/Nova"
 
 from difflib import SequenceMatcher
