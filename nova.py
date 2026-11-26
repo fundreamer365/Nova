@@ -2,7 +2,7 @@ import sys, os
 if sys.stdout is None: sys.stdout = open(os.devnull, "w")     # exe без консоли: print() не должен падать
 if sys.stderr is None: sys.stderr = open(os.devnull, "w")
 
-VERSION = "7.0.3"                      # ← именно эту строку читает самообновление; при выпуске правь её и тег релиза (v7.0.0)
+VERSION = "7.0.4"                      # ← именно эту строку читает самообновление; при выпуске правь её и тег релиза (v7.0.0)
 REPO = "fundreamer365/Nova"
 
 from difflib import SequenceMatcher
@@ -61,7 +61,7 @@ MIC_DEFAULT = "По умолчанию"
 DEFAULT_CFG = dict(
     name="Нова", voice="Светлана (рус)", rate=8, pitch=0, volume=100, tts=True, sync_text=True,
     mic=MIC_DEFAULT, mic_sens=2.5, silence=0.9, max_rec=20, wait_speech=8, lang="ru-RU", auto=False,
-    ai=True, ai_model="openai", ai_key="", ai_url="", ai_style="Коротко", ai_timeout=40, history_len=12, learn=True, persona="Дружелюбная",
+    ai=True, ai_model="llama-3.3-70b-versatile", ai_key="", ai_url="", ai_style="Коротко", ai_timeout=40, history_len=12, learn=True, persona="Дружелюбная",
     font_size=11, topmost=False, opacity=100, theme="Аврора", copy_on_select=False, city="",
     ver=7, wake=True, wake_aliases="", conv_window=25, wake_chime=True, speak_typed=True,
     autosave=True, autosave_dir=str(HOME / "chats"), autosave_fmt="txt", autosave_sec=30, autosave_keep=30, restore_chat=False,
@@ -92,7 +92,16 @@ SITES = {"ютуб": "youtube.com", "youtube": "youtube.com", "гугл": "googl
          "itch": "itch.io", "тикток": "tiktok.com", "переводчик": "translate.google.com"}
 DAYS = ["понедельник", "вторник", "среда", "четверг", "пятница", "суббота", "воскресенье"]
 MONTHS = ["января", "февраля", "марта", "апреля", "мая", "июня", "июля", "августа", "сентября", "октября", "ноября", "декабря"]
-AI_URL = "https://gen.pollinations.ai/v1/chat/completions"
+AI_URL = "https://api.groq.com/openai/v1/chat/completions"
+# сервис: (адрес, модель, где взять бесплатный ключ). Модели у сервисов меняются: если пишет «нет такой модели», поправь поле «Модель».
+AI_PROVIDERS = {
+    "Groq": (AI_URL, "llama-3.3-70b-versatile", "https://console.groq.com/keys"),
+    "Google Gemini": ("https://generativelanguage.googleapis.com/v1beta/openai/chat/completions", "gemini-2.5-flash",
+                      "https://aistudio.google.com/apikey"),
+    "OpenRouter": ("https://openrouter.ai/api/v1/chat/completions", "meta-llama/llama-3.3-70b-instruct:free",
+                   "https://openrouter.ai/keys"),
+    "Pollinations": ("https://gen.pollinations.ai/v1/chat/completions", "openai", "https://enter.pollinations.ai"),
+}
 DETAILS_RE = re.compile(r"\n\s*-{3,}")
 MAX_ATT = 10
 IMG_EXT = {".png", ".jpg", ".jpeg", ".webp", ".bmp", ".gif"}
@@ -397,6 +406,7 @@ class AIError(Exception):
     def __init__(self, status, body=""):
         super().__init__(f"HTTP {status}: {body}")
         self.status = status
+        self.body = body
 
 
 def log_err(where, ex):
@@ -410,9 +420,15 @@ def log_err(where, ex):
 
 def ai_error_text(ex):
     code = getattr(ex, "status", 0)
-    if code in (401, 402, 403):
-        return ("ИИ просит API-ключ. Получи ключ на сайте enter.pollinations.ai и вставь его в настройках "
-                "(раздел «ИИ», поле «API-ключ ИИ»).")
+    body = str(getattr(ex, "body", "") or "")[:200]
+    if code == 401:
+        return "ИИ не принял ключ (ошибка 401): он неверный или пустой. Вставь ключ целиком, без пробелов. " + body
+    if code == 402:
+        return "На этом ключе закончились лимиты (ошибка 402). Выбери в настройках другой сервис ИИ, например Groq. " + body
+    if code == 403:
+        return "Ключу нельзя пользоваться этим сервисом или моделью (ошибка 403). Попробуй другой сервис ИИ в настройках. " + body
+    if code == 404:
+        return "У выбранного сервиса нет такой модели (ошибка 404). Выбери сервис заново или поправь поле «Модель». " + body
     if code == 429: return "ИИ сейчас перегружен или лимит исчерпан. Попробуй через минуту."
     if code: return f"Сервис ИИ ответил ошибкой {code}. Подробности записаны в файл nova.log в папке .nova."
     if isinstance(ex, requests.exceptions.Timeout): return "ИИ слишком долго отвечает. Попробуй ещё раз."
@@ -2237,10 +2253,20 @@ class App(QMainWindow):
         switch("Запоминать факты обо мне автоматически", "learn")
         menu("Длина ответа", "ai_style", list(STYLES))
         menu("Характер помощника", "persona", list(PERSONAS))
-        entry("Модель", "ai_model")
-        entry("API-ключ ИИ (enter.pollinations.ai)", "ai_key")
-        entry("Адрес ИИ (пусто = по умолчанию)", "ai_url")
-        btn("Получить API-ключ (откроется сайт)", lambda: webbrowser.open("https://enter.pollinations.ai"))
+        def pick_provider(name):
+            u, m, _ = AI_PROVIDERS[name]
+            e_url.setText(u); e_model.setText(m); e_key.setText("")
+            self.cfg_set("ai_url", u); self.cfg_set("ai_model", m); self.cfg_set("ai_key", "")
+            self.flash("Вставь ключ для " + name, 4000)
+        menu_w = QComboBox(); menu_w.addItems(list(AI_PROVIDERS)); menu_w.setFixedWidth(230)
+        menu_w.setCurrentText(next((k for k, v in AI_PROVIDERS.items() if (c.get("ai_url") or AI_URL) == v[0]), "Groq"))
+        menu_w.textActivated.connect(pick_provider)
+        line("Сервис ИИ (сам подставит адрес и модель)", menu_w)
+        e_model = entry("Модель", "ai_model")
+        e_key = entry("API-ключ ИИ", "ai_key")
+        e_url = entry("Адрес ИИ (пусто = по умолчанию)", "ai_url")
+        btn("Получить бесплатный ключ для этого сервиса", lambda: webbrowser.open(AI_PROVIDERS[menu_w.currentText()][2]))
+        btn("Проверить ИИ", lambda: threading.Thread(target=self.test_ai, daemon=True).start())
         slider("Сообщений в контексте", "history_len", 2, 30)
         slider("Таймаут ответа, с", "ai_timeout", 10, 120)
 
@@ -2309,6 +2335,20 @@ class App(QMainWindow):
         tip = QLabel("Голос выбирается в главном окне. Имя применится после перезапуска."); tip.setStyleSheet(f"color:{MUTE};"); tip.setWordWrap(True)
         col.addWidget(tip); col.addStretch()
         w.show()
+
+    def test_ai(self):
+        if not self.take(): return
+        try:
+            self.ui(self.put, "Проверяю ИИ…\n", "time")
+            try:
+                r = self.post_ai([{"role": "user", "content": "Ответь одним словом: привет"}])
+                txt = r.json()["choices"][0]["message"]["content"].strip()
+                self.ui(self.put, f"ИИ работает. Ответ: {txt[:200]}\n\n", "time")
+            except Exception as ex:
+                log_err("test-ai", ex)
+                self.ui(self.put, ai_error_text(ex) + "\n\n", "time")
+        finally:
+            self.busy = False; self.set_state("waiting" if self.mem.cfg["wake"] else "idle")
 
     def reset_cfg(self):
         self.mem.cfg.update(DEFAULT_CFG); self.mem.save(); self.apply_ui(); self.vmenu.setCurrentText(DEFAULT_CFG["voice"])
