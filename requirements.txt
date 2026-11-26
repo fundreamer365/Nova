@@ -1,0 +1,10 @@
+numpy
+psutil
+requests
+sounddevice
+SpeechRecognition
+edge-tts
+pygame
+PySide6
+pypdf
+pillow
