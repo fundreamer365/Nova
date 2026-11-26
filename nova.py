@@ -2,7 +2,7 @@ import sys, os
 if sys.stdout is None: sys.stdout = open(os.devnull, "w")     # exe без консоли: print() не должен падать
 if sys.stderr is None: sys.stderr = open(os.devnull, "w")
 
-VERSION = "7.0.1"                      # ← именно эту строку читает самообновление; при выпуске правь её и тег релиза (v7.0.0)
+VERSION = "7.0.2"                      # ← именно эту строку читает самообновление; при выпуске правь её и тег релиза (v7.0.0)
 REPO = "fundreamer365/Nova"
 
 from difflib import SequenceMatcher
@@ -61,7 +61,7 @@ MIC_DEFAULT = "По умолчанию"
 DEFAULT_CFG = dict(
     name="Нова", voice="Светлана (рус)", rate=8, pitch=0, volume=100, tts=True, sync_text=True,
     mic=MIC_DEFAULT, mic_sens=2.5, silence=0.9, max_rec=20, wait_speech=8, lang="ru-RU", auto=False,
-    ai=True, ai_model="openai", ai_style="Коротко", ai_timeout=40, history_len=12, learn=True, persona="Дружелюбная",
+    ai=True, ai_model="openai", ai_key="", ai_url="", ai_style="Коротко", ai_timeout=40, history_len=12, learn=True, persona="Дружелюбная",
     font_size=11, topmost=False, opacity=100, theme="Аврора", copy_on_select=False, city="",
     ver=7, wake=True, wake_aliases="", conv_window=25, wake_chime=True, speak_typed=True,
     autosave=True, autosave_dir=str(HOME / "chats"), autosave_fmt="txt", autosave_sec=30, autosave_keep=30, restore_chat=False,
@@ -92,7 +92,7 @@ SITES = {"ютуб": "youtube.com", "youtube": "youtube.com", "гугл": "googl
          "itch": "itch.io", "тикток": "tiktok.com", "переводчик": "translate.google.com"}
 DAYS = ["понедельник", "вторник", "среда", "четверг", "пятница", "суббота", "воскресенье"]
 MONTHS = ["января", "февраля", "марта", "апреля", "мая", "июня", "июля", "августа", "сентября", "октября", "ноября", "декабря"]
-AI_URL = "https://text.pollinations.ai/openai"
+AI_URL = "https://gen.pollinations.ai/v1/chat/completions"
 DETAILS_RE = re.compile(r"\n\s*-{3,}")
 MAX_ATT = 10
 IMG_EXT = {".png", ".jpg", ".jpeg", ".webp", ".bmp", ".gif"}
@@ -390,6 +390,44 @@ def dark_titlebar(win):
         one = ctypes.c_int(1); f(hwnd, 20, ctypes.byref(one), 4); f(hwnd, 19, ctypes.byref(one), 4)     # тёмный заголовок
         col = ctypes.c_int(0x1a0d0b); f(hwnd, 35, ctypes.byref(col), 4); f(hwnd, 34, ctypes.byref(col), 4)   # цвет заголовка/рамки (Win11)
     except Exception: pass
+
+
+class AIError(Exception):
+    """Сервис ИИ ответил ошибкой (status: код HTTP)."""
+    def __init__(self, status, body=""):
+        super().__init__(f"HTTP {status}: {body}")
+        self.status = status
+
+
+def log_err(where, ex):
+    """Пишет ошибку в ~/.nova/nova.log, чтобы можно было понять, что пошло не так."""
+    try:
+        HOME.mkdir(parents=True, exist_ok=True)
+        with open(HOME / "nova.log", "a", encoding="utf-8") as f:
+            f.write(f"{time.strftime('%Y-%m-%d %H:%M:%S')} [{where}] {type(ex).__name__}: {ex}\n")
+    except Exception: pass
+
+
+def ai_error_text(ex):
+    code = getattr(ex, "status", 0)
+    if code in (401, 402, 403):
+        return ("ИИ просит API-ключ. Получи ключ на сайте enter.pollinations.ai и вставь его в настройках "
+                "(раздел «ИИ», поле «API-ключ ИИ»).")
+    if code == 429: return "ИИ сейчас перегружен или лимит исчерпан. Попробуй через минуту."
+    if code: return f"Сервис ИИ ответил ошибкой {code}. Подробности записаны в файл nova.log в папке .nova."
+    if isinstance(ex, requests.exceptions.Timeout): return "ИИ слишком долго отвечает. Попробуй ещё раз."
+    return "Не смогла связаться с ИИ. Проверь интернет. Подробности записаны в файл nova.log. Команды вроде диагностики и запуска программ работают и без него."
+
+
+def cleanup_old():
+    """После обновления старый exe лежит рядом как *.old: удаляем, когда он закроется."""
+    for _ in range(20):
+        left = False
+        for f in SELF.parent.glob(SELF.name + ".*.old"):
+            try: f.unlink()
+            except Exception: left = True
+        if not left: return
+        time.sleep(1.5)
 
 
 # ---------- память и настройки ----------
@@ -756,7 +794,7 @@ class App(QMainWindow):
         self.really_quit = True; self.autosave()
         try: pygame.mixer.quit()
         except Exception: pass
-        QApplication.quit(); QTimer.singleShot(2500, lambda: os._exit(0))
+        threading.Timer(2.0, lambda: os._exit(0)).start(); QApplication.quit()
 
     def dragEnterEvent(self, e):
         if e.mimeData().hasUrls(): e.acceptProposedAction()
@@ -1189,7 +1227,7 @@ class App(QMainWindow):
         tmp = HOME / "update"; tmp.mkdir(parents=True, exist_ok=True)
         part = tmp / ("Nova_new.exe" if info["kind"] == "exe" else "nova_new.py"); h = hashlib.sha256()
         try:
-            r = requests.get(info["url"], headers=UA, timeout=(10, 120), stream=True); r.raise_for_status()
+            r = requests.get(info["url"], headers={"User-Agent": UA["User-Agent"]}, timeout=(10, 120), stream=True); r.raise_for_status()
             with open(part, "wb") as f:
                 for ch in r.iter_content(1 << 16): f.write(ch); h.update(ch)
         except Exception as ex: return f"Не удалось скачать обновление: {ex}"
@@ -1204,15 +1242,31 @@ class App(QMainWindow):
             return None
         if part.stat().st_size < 5_000_000: return "Скачанный файл слишком маленький — отменяю."
         if info.get("sha"):
-            try: want = requests.get(info["sha"], headers=UA, timeout=10).text.split()[0].lower()
+            try: want = requests.get(info["sha"], headers={"User-Agent": UA["User-Agent"]}, timeout=10).text.split()[0].lower()
             except Exception: return "Не получилось проверить контрольную сумму — отменяю."
             if want != h.hexdigest(): part.unlink(missing_ok=True); return "Контрольная сумма не совпала — обновление отменено."
-        bat = tmp / "apply.bat"                  # exe нельзя заменить на ходу: батник ждёт, пока мы закроемся, и подменяет файл
-        bat.write_text("@echo off\r\nchcp 65001 >nul\r\n"
-                       f'for /l %%i in (1,1,60) do (\r\n  timeout /t 1 /nobreak >nul\r\n  move /Y "{part}" "{SELF}" >nul 2>&1 && goto done\r\n)\r\n'
-                       f'exit /b 1\r\n:done\r\nstart "" "{SELF}"\r\n(goto) 2>nul & del "%~f0"\r\n', "utf-8")
-        env = {**os.environ, "PYINSTALLER_RESET_ENVIRONMENT": "1"}      # чтобы новый exe не унаследовал временную папку старого
-        subprocess.Popen(["cmd", "/c", str(bat)], env=env, creationflags=0x08000008, close_fds=True)
+        # exe нельзя перезаписать, пока он запущен, зато можно ПЕРЕИМЕНОВАТЬ: старый уходит в *.old, новый встаёт на его место.
+        # Никаких bat-файлов и окон cmd.
+        old = SELF.with_name(f"{SELF.name}.{int(time.time())}.old")
+        try: os.replace(SELF, old)
+        except Exception as ex:
+            log_err("update-rename", ex)
+            return "Не получилось заменить файл. Перенеси Nova.exe в обычную папку (например, на рабочий стол) и попробуй снова."
+        try: shutil.copy2(part, SELF)
+        except Exception as ex:
+            log_err("update-copy", ex)
+            try: os.replace(old, SELF)
+            except Exception: pass
+            return f"Не получилось записать новую версию: {ex}"
+        part.unlink(missing_ok=True)
+        env = {k: v for k, v in os.environ.items() if not k.startswith(("_MEI", "_PYI"))}
+        env["PYINSTALLER_RESET_ENVIRONMENT"] = "1"          # новый exe распаковывается в свою временную папку
+        try:
+            subprocess.Popen([str(SELF), "--restarted"], env=env, cwd=str(SELF.parent), close_fds=True, creationflags=0x00000208,
+                             stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        except Exception as ex:
+            log_err("update-start", ex)
+            return "Обновление установлено, но запустить новую версию не вышло. Закрой Нову и открой Nova.exe вручную."
         return None
 
     def update_flow(self, silent=False):
@@ -1230,7 +1284,7 @@ class App(QMainWindow):
             self.flash("Скачиваю обновление…", 60000)
             err = self.install_update(info)
             if err: return err
-            self.say("Обновилась. Сейчас перезапущусь."); self.ui(self.quit_app); return ""
+            self.ui(self.quit_app); return ""
         finally: self.upd_lock.release()
 
     def btn_update(self):
@@ -1986,8 +2040,17 @@ class App(QMainWindow):
     # ---------- ИИ: потоковый ответ, озвучка начинается с первого предложения ----------
     def post_ai(self, msgs, stream=False):
         c = self.mem.cfg
-        return requests.post(AI_URL, json={"model": c["ai_model"], "messages": msgs, "stream": stream},
-                             timeout=(8, c["ai_timeout"]), stream=stream)
+        hdr = {"User-Agent": f"Nova/{VERSION}"}
+        key = str(c.get("ai_key", "")).strip()
+        if key: hdr["Authorization"] = "Bearer " + key
+        url = str(c.get("ai_url", "")).strip() or AI_URL
+        r = requests.post(url, json={"model": c["ai_model"], "messages": msgs, "stream": stream},
+                          headers=hdr, timeout=(8, c["ai_timeout"]), stream=stream)
+        if r.status_code >= 400:
+            try: body = r.text[:300]
+            except Exception: body = ""
+            raise AIError(r.status_code, body)
+        return r
 
     def emit_ai(self, full, pos, final):
         m = DETAILS_RE.search(full)
@@ -2044,7 +2107,8 @@ class App(QMainWindow):
                     try: full += json.loads(p)["choices"][0]["delta"].get("content") or ""
                     except Exception: continue
                     pos = self.emit_ai(full, pos, False)
-            except Exception:
+            except Exception as ex:
+                if isinstance(ex, AIError) and ex.status in (401, 402, 403, 404, 429): raise
                 if not full.strip():                              # стрим не получился — обычный запрос
                     full = self.post_ai(msgs).json()["choices"][0]["message"]["content"]
             full = full.strip()
@@ -2052,10 +2116,10 @@ class App(QMainWindow):
             self.emit_ai(full, pos, True)
             m = DETAILS_RE.search(full)
             card = full[m.end():].strip(" -\n") if m else None
-        except Exception:
-            h.pop(); sp.end()
+        except Exception as ex:
+            h.pop(); sp.end(); log_err("ai", ex)
             if n_img: return "Не получилось отправить фото ИИ — возможно, выбранная модель не умеет смотреть картинки или нет связи."
-            return "Не смогла связаться с ИИ. Команды вроде диагностики и запуска программ работают и без него."
+            return ai_error_text(ex)
         h.append({"role": "assistant", "content": full}); d["history"] = h[-30:]; self.mem.save()
         self.last_ai = full
         if c["learn"] and learn: threading.Thread(target=self.learn, args=(text,), daemon=True).start()
@@ -2174,6 +2238,8 @@ class App(QMainWindow):
         menu("Длина ответа", "ai_style", list(STYLES))
         menu("Характер помощника", "persona", list(PERSONAS))
         entry("Модель", "ai_model")
+        entry("API-ключ ИИ (enter.pollinations.ai)", "ai_key")
+        entry("Адрес ИИ (пусто = по умолчанию)", "ai_url")
         slider("Сообщений в контексте", "history_len", 2, 30)
         slider("Таймаут ответа, с", "ai_timeout", 10, 120)
 
@@ -2262,8 +2328,9 @@ def main():
         try: ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID("fundreamer365.Nova")   # своя иконка в панели задач
         except Exception: pass
     app = QApplication(sys.argv); app.setStyle("Fusion"); app.setApplicationName("Nova"); app.setQuitOnLastWindowClosed(False)
-    if not single_instance(wait=10 if "--restarted" in sys.argv else 0):
+    if not single_instance(wait=30 if "--restarted" in sys.argv else 0):
         QMessageBox.information(None, "Нова", "Нова уже запущена — посмотри в трее или на панели задач."); return
+    threading.Thread(target=cleanup_old, daemon=True).start()
     w = App(); w.show()
     sys.exit(app.exec())
 
