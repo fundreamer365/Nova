@@ -4,90 +4,183 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Нова — голосовой помощник для Windows</title>
+<meta name="description" content="Нова — бесплатный голосовой помощник для Windows: открывает программы, ищет, считает, ставит таймеры, отвечает как ИИ.">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' font-size='90'%3E🔮%3C/text%3E%3C/svg%3E">
 <style>
 :root{--bg:#0b0d1a;--panel:#151932;--card:#1f2547;--text:#eceeff;--mute:#9aa1d4;--pink:#ff6b8b;--vio:#7c5cff;--cyan:#38e1e6;color-scheme:dark;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
 *,*::before,*::after{box-sizing:inherit}
-html{scroll-padding-top:env(safe-area-inset-top,0px)}
+html{scroll-padding-top:70px}
 body{margin:0;background:var(--bg);color:var(--text);font-family:'Segoe UI',system-ui,-apple-system,Roboto,sans-serif;line-height:1.6;-webkit-font-smoothing:antialiased}
-main{max-width:880px;margin:0 auto;padding:0 24px 64px}
-.hero{display:flex;flex-direction:column;align-items:center;text-align:center;padding-top:40px}
-canvas{width:min(340px,80vw);height:min(340px,80vw)}
+a{color:var(--cyan)}
+a:focus-visible,button:focus-visible,summary:focus-visible,input:focus-visible{outline:3px solid var(--pink);outline-offset:3px}
+.bar{position:sticky;top:0;z-index:5;background:rgba(11,13,26,.88);backdrop-filter:blur(10px);border-bottom:1px solid var(--card)}
+.bar-in{max-width:960px;margin:0 auto;padding:12px 24px;display:flex;align-items:center;gap:8px 24px;flex-wrap:wrap}
+.brand{font-weight:700;font-size:20px;color:var(--text);text-decoration:none;margin-right:auto}
+.bar nav{display:flex;gap:4px 18px;flex-wrap:wrap}
+.bar nav a{color:var(--mute);text-decoration:none;padding:4px 2px;border-bottom:2px solid transparent}
+.bar nav a:hover{color:var(--text)}
+.bar nav a[aria-current=page]{color:var(--text);border-color:var(--pink)}
+main{max-width:960px;margin:0 auto;padding:0 24px 64px}
+[hidden]{display:none!important}
+.hero{display:flex;flex-direction:column;align-items:center;text-align:center;padding-top:32px}
+canvas{width:min(320px,76vw);height:min(320px,76vw)}
 h1{font-size:clamp(40px,8vw,68px);line-height:1.05;margin:4px 0 14px;font-weight:700;letter-spacing:-.02em}
-.lead{max-width:30em;margin:0 auto 28px;color:var(--mute);font-size:19px}
-.btn{display:inline-block;background:var(--cyan);color:#07202a;font-weight:700;font-size:18px;text-decoration:none;padding:15px 34px;border-radius:999px;transition:background .15s,transform .15s}
+h2{font-size:26px;margin:0 0 20px;font-weight:700}
+.lead{max-width:30em;margin:0 auto 26px;color:var(--mute);font-size:19px}
+.btns{display:flex;gap:12px;flex-wrap:wrap;justify-content:center}
+.btn{display:inline-block;background:var(--cyan);color:#07202a;font-weight:700;font-size:18px;text-decoration:none;padding:14px 30px;border-radius:999px;transition:background .15s,transform .15s}
 .btn:hover{background:#7cf0f4}
 .btn:active{transform:scale(.98)}
-a:focus-visible,summary:focus-visible{outline:3px solid var(--pink);outline-offset:3px}
-.meta{margin:14px 0 0;color:var(--mute);font-size:14px}
-section{margin-top:72px}
-h2{font-size:26px;margin:0 0 20px;font-weight:700}
+.btn.alt{background:transparent;color:var(--text);border:2px solid var(--card)}
+.btn.alt:hover{background:var(--card)}
+.stats{display:flex;gap:10px 36px;flex-wrap:wrap;justify-content:center;margin:26px 0 0;color:var(--mute);font-size:15px}
+.stats b{display:block;color:var(--text);font-size:22px;font-weight:700}
+.meta{margin:12px 0 0;color:var(--mute);font-size:14px}
+section.page{margin-top:56px}
+.hero+section.page{margin-top:72px}
 dl{margin:0;display:grid;grid-template-columns:minmax(0,13em) minmax(0,1fr);gap:0 28px}
 dt{font-weight:600;color:var(--cyan);padding:14px 0;border-top:1px solid var(--card)}
-dd{margin:0;padding:14px 0;border-top:1px solid var(--card);color:var(--text)}
+dd{margin:0;padding:14px 0;border-top:1px solid var(--card)}
 dd q{color:var(--mute);quotes:"«" "»"}
-.steps{margin:0;padding-left:1.3em;max-width:38em}
+.steps{margin:0;padding-left:1.3em;max-width:40em}
 .steps li{margin-bottom:10px;padding-left:6px}
 .steps li::marker{color:var(--pink);font-weight:700}
-details{max-width:38em;background:var(--panel);border-radius:16px;padding:16px 20px;margin-bottom:12px}
+details{max-width:42em;background:var(--panel);border-radius:16px;padding:16px 20px;margin-bottom:12px}
 summary{cursor:pointer;font-weight:600}
 details p{margin:10px 0 0;color:var(--mute)}
+.tools{display:flex;gap:12px;flex-wrap:wrap;align-items:center;margin:0 0 24px}
+.tools input{flex:1 1 220px;background:var(--panel);border:1px solid var(--card);color:var(--text);border-radius:999px;padding:11px 18px;font:inherit}
+.seg{display:flex;background:var(--panel);border-radius:999px;padding:4px}
+.seg button{background:none;border:0;color:var(--mute);font:inherit;padding:7px 18px;border-radius:999px;cursor:pointer}
+.seg button[aria-pressed=true]{background:var(--vio);color:#fff}
+.cat{margin-bottom:34px}
+.cat h3{margin:0 0 6px;font-size:18px;color:var(--cyan)}
+.row{display:grid;grid-template-columns:minmax(0,19em) minmax(0,1fr);gap:4px 24px;padding:10px 0;border-top:1px solid var(--card)}
+.row .c{font-weight:600}
+.row .d{color:var(--mute)}
+.note{color:var(--mute);max-width:44em;margin:0 0 22px}
+.empty{color:var(--mute)}
+.rel{padding:22px 0;border-top:1px solid var(--card);max-width:46em}
+.rel h3{margin:0;font-size:22px}
+.rel time{color:var(--mute);font-size:14px;margin-left:10px}
+.badge{display:inline-block;background:var(--vio);color:#fff;font-size:12px;font-weight:700;border-radius:999px;padding:2px 10px;margin-left:10px;vertical-align:middle}
+.rel ul{margin:12px 0 8px;padding-left:1.2em}
+.rel li{margin-bottom:6px}
+.rel li::marker{color:var(--pink)}
+.rel p{margin:8px 0;color:var(--mute)}
 footer{margin-top:72px;padding-top:24px;border-top:1px solid var(--card);color:var(--mute);font-size:14px;display:flex;flex-wrap:wrap;gap:8px 24px;justify-content:space-between}
 footer a{color:var(--mute)}
-@media(max-width:640px){dl{grid-template-columns:1fr}dt{padding-bottom:0;border-bottom:0}dd{border-top:0;padding-top:2px}}
+@media(max-width:700px){dl{grid-template-columns:1fr}dt{padding-bottom:0;border-bottom:0}dd{border-top:0;padding-top:2px}.row{grid-template-columns:1fr}}
+@media(prefers-reduced-motion:reduce){*{transition:none!important}}
 </style>
 </head>
 <body>
+<header class="bar">
+  <div class="bar-in">
+    <a class="brand" href="#home">Нова</a>
+    <nav aria-label="Разделы">
+      <a href="#home" data-p="home">Главная</a>
+      <a href="#commands" data-p="commands">Команды</a>
+      <a href="#changelog" data-p="changelog">Журнал изменений</a>
+      <a href="https://github.com/fundreamer365/Nova">GitHub</a>
+    </nav>
+  </div>
+</header>
+
 <main>
-  <header class="hero">
-    <canvas id="orb" width="680" height="680" role="img" aria-label="Светящийся шар Новы"></canvas>
-    <h1>Нова</h1>
-    <p class="lead">Голосовой помощник для Windows. Говоришь по-русски, она открывает программы, ищет, считает, ставит таймеры и отвечает как ИИ.</p>
-    <a class="btn" id="dl" href="https://github.com/fundreamer365/Nova/releases/latest/download/Nova.exe">Скачать для Windows</a>
-    <p class="meta">Бесплатно. Один файл Nova.exe, установка не нужна.</p>
-  </header>
+  <!-- ГЛАВНАЯ -->
+  <div id="home" data-page>
+    <header class="hero">
+      <canvas id="orb" width="640" height="640" role="img" aria-label="Светящийся шар Новы"></canvas>
+      <h1>Нова</h1>
+      <p class="lead">Голосовой помощник для Windows. Говоришь по-русски или по-английски, она открывает программы, ищет, считает, ставит таймеры и отвечает как ИИ.</p>
+      <div class="btns">
+        <a class="btn" id="dl-setup" href="https://github.com/fundreamer365/Nova/releases/latest/download/Nova-Setup.exe">Скачать установщик</a>
+        <a class="btn alt" id="dl-exe" href="https://github.com/fundreamer365/Nova/releases/latest/download/Nova.exe">Портативная версия</a>
+      </div>
+      <div class="stats" aria-live="polite">
+        <span><b id="st-ver">…</b>последняя версия</span>
+        <span><b id="st-date">…</b>дата выпуска</span>
+        <span><b id="st-dl">…</b>скачиваний</span>
+      </div>
+      <p class="meta">Бесплатно. Для Windows 10 и 11</p>
+    </header>
 
-  <section aria-labelledby="can">
-    <h2 id="can">Что она умеет</h2>
-    <dl>
-      <dt>Слушает имя</dt><dd>Скажи <q>Нова, открой ютуб</q>, и она ответит голосом. Нажимать ничего не надо.</dd>
-      <dt>Управляет компьютером</dt><dd>Открывает программы и сайты, двигает мышь, жмёт клавиши, переключает рабочие столы, делает скриншоты.</dd>
-      <dt>Видит экран и фото</dt><dd>Можно спросить <q>что у меня на экране?</q> или перетащить в окно картинку и файл.</dd>
-      <dt>Отвечает как ИИ</dt><dd>Любой вопрос, код, объяснение. Длинные ответы показывает текстом, а голосом говорит только суть.</dd>
-      <dt>Помнит тебя</dt><dd>Запоминает имя и факты о тебе. Скажи <q>запомни, что…</q> или <q>забудь всё</q>.</dd>
-      <dt>Делает файлы</dt><dd>Создаёт txt, docx, pdf и другие документы прямо по голосовой команде.</dd>
-      <dt>Таймеры и заметки</dt><dd>Напоминания, будильник, заметки, погода, курс валют, калькулятор.</dd>
-      <dt>Обновляется сама</dt><dd>Когда выходит новая версия, вверху появляется кнопка обновления.</dd>
-    </dl>
-  </section>
+    <section class="page" aria-labelledby="can">
+      <h2 id="can">Что она умеет</h2>
+      <dl>
+        <dt>Слушает имя</dt><dd>Скажи <q>Нова, открой ютуб</q>, и она ответит голосом. Можно и по горячей клавише: Ctrl+Alt+Пробел работает даже при свёрнутом окне.</dd>
+        <dt>Управляет компьютером</dt><dd>Открывает программы и сайты, двигает мышь, жмёт клавиши, переключает рабочие столы, делает скриншоты.</dd>
+        <dt>Включает музыку</dt><dd>Пауза, следующий и предыдущий трек, <q>что играет</q>, поиск в Spotify и на YouTube.</dd>
+        <dt>Видит экран и фото</dt><dd>Можно спросить <q>что у меня на экране?</q> или перетащить в окно картинку и файл.</dd>
+        <dt>Отвечает как ИИ</dt><dd>Любой вопрос, код, объяснение. Длинные ответы показывает текстом, а голосом говорит только суть.</dd>
+        <dt>Помнит тебя</dt><dd>Запоминает имя и факты о тебе. Скажи <q>запомни, что…</q> или <q>забудь всё</q>.</dd>
+        <dt>Делает файлы</dt><dd>Создаёт txt, docx, pdf и другие документы по голосовой команде.</dd>
+        <dt>Выглядит как хочешь</dt><dd>5 тем окна, 10 цветов шара и 5 скинов: Волны, Кольцо, Ядро, Орбита, Спектр.</dd>
+        <dt>Два языка</dt><dd>Русский и английский интерфейс. На новой установке язык выбирается по языку Windows.</dd>
+        <dt>Обновляется сама</dt><dd>Когда выходит новая версия, вверху появляется кнопка обновления, а потом Нова показывает, что нового.</dd>
+      </dl>
+    </section>
 
-  <section aria-labelledby="how">
-    <h2 id="how">Как начать</h2>
-    <ol class="steps">
-      <li>Нажми «Скачать для Windows» и дождись файла Nova.exe.</li>
-      <li>Запусти его. Если Windows покажет синее окно, нажми «Подробнее», затем «Выполнить в любом случае».</li>
-      <li>Разреши доступ к микрофону и скажи: «Нова, что ты умеешь?»</li>
-    </ol>
-  </section>
+    <section class="page" aria-labelledby="how">
+      <h2 id="how">Как начать</h2>
+      <ol class="steps">
+        <li>Нажми «Скачать установщик» и запусти <b>Nova-Setup.exe</b>. Права администратора не нужны.</li>
+        <li>Если Windows покажет синее окно, нажми «Подробнее», затем «Выполнить в любом случае».</li>
+        <li>Разреши доступ к микрофону и скажи: «Нова, что ты умеешь?»</li>
+        <li>Чтобы Нова отвечала как ИИ, в настройках (шестерёнка, раздел «ИИ») выбери сервис, нажми «Получить бесплатный ключ» и вставь ключ в поле.</li>
+      </ol>
+    </section>
 
-  <section aria-labelledby="faq">
-    <h2 id="faq">Вопросы</h2>
-    <details>
-      <summary>Почему Windows ругается на файл?</summary>
-      <p>Программа не имеет платной цифровой подписи, поэтому SmartScreen предупреждает о любом новом файле. Исходный код открыт, его можно проверить в репозитории на GitHub.</p>
-    </details>
-    <details>
-      <summary>Куда уходит мой голос?</summary>
-      <p>Распознавание речи работает через сервис Google, а ответы ИИ приходят из интернета. Если отклик на имя не нужен, его можно выключить переключателем в главном окне.</p>
-    </details>
-    <details>
-      <summary>Нужен ли интернет?</summary>
-      <p>Да. Без него не работают распознавание речи, озвучка и ответы ИИ.</p>
-    </details>
-    <details>
-      <summary>Работает ли на Mac или Linux?</summary>
-      <p>Нет, Нова сделана только для Windows 10 и 11.</p>
-    </details>
-  </section>
+    <section class="page" aria-labelledby="faq">
+      <h2 id="faq">Вопросы</h2>
+      <details>
+        <summary>Зачем нужен ключ для ИИ?</summary>
+        <p>Бесплатных ИИ-сервисов без ключа почти не осталось. Ключ бесплатный: например, на Groq он выдаётся без карты. Без ключа Нова всё равно открывает программы, ставит таймеры, считает и выполняет остальные команды, только не отвечает на свободные вопросы.</p>
+      </details>
+      <details>
+        <summary>Почему Windows ругается на файл?</summary>
+        <p>У программы нет платной цифровой подписи, поэтому SmartScreen предупреждает о любом новом файле. Исходный код открыт, его можно проверить в репозитории на GitHub.</p>
+      </details>
+      <details>
+        <summary>Куда уходит мой голос?</summary>
+        <p>Распознавание речи работает через сервис Google, а ответы ИИ приходят из выбранного тобой сервиса. Если отклик на имя не нужен, его можно выключить переключателем в главном окне.</p>
+      </details>
+      <details>
+        <summary>Где хранятся мои данные и как удалить Нову?</summary>
+        <p>Настройки, память и чаты лежат в папке <b>.nova</b> в твоей папке пользователя. Нову можно удалить через «Параметры → Приложения», папку .nova при желании удали вручную.</p>
+      </details>
+      <details>
+        <summary>Работает ли на Mac или Linux?</summary>
+        <p>Нет, Нова сделана только для Windows 10 и 11.</p>
+      </details>
+    </section>
+  </div>
+
+  <!-- КОМАНДЫ -->
+  <div id="commands" data-page hidden>
+    <section class="page" aria-labelledby="cm">
+      <h2 id="cm">Команды</h2>
+      <p class="note">Все команды можно и говорить, и печатать в строке внизу. Перед командой можно говорить имя: «Нова, …». Русских команд больше всего. Английские работают при английском интерфейсе, остальное Нова отправляет ИИ.</p>
+      <div class="tools">
+        <input id="q" type="search" placeholder="Поиск по командам" aria-label="Поиск по командам">
+        <div class="seg" role="group" aria-label="Язык команд">
+          <button id="l-ru" aria-pressed="true">Русские</button>
+          <button id="l-en" aria-pressed="false">English</button>
+        </div>
+      </div>
+      <div id="cmds"></div>
+    </section>
+  </div>
+
+  <!-- ЖУРНАЛ -->
+  <div id="changelog" data-page hidden>
+    <section class="page" aria-labelledby="cl">
+      <h2 id="cl">Журнал изменений</h2>
+      <p class="note">Список подтягивается с GitHub, поэтому новые версии появляются здесь сами.</p>
+      <div id="rels"><p class="empty">Загружаю…</p></div>
+    </section>
+  </div>
 
   <footer>
     <span>Нова · сделано fundreamer365</span>
@@ -97,9 +190,24 @@ footer a{color:var(--mute)}
 
 <script>
 (function(){
+  var REPO='fundreamer365/Nova';
+
+  /* ---------- страницы по #якорю ---------- */
+  var PAGES=['home','commands','changelog'];
+  function route(){
+    var h=(location.hash||'#home').slice(1);
+    if(PAGES.indexOf(h)<0)h='home';
+    PAGES.forEach(function(p){document.getElementById(p).hidden=(p!==h)});
+    document.querySelectorAll('.bar nav a[data-p]').forEach(function(a){
+      if(a.dataset.p===h)a.setAttribute('aria-current','page');else a.removeAttribute('aria-current');
+    });
+    window.scrollTo(0,0);
+  }
+  window.addEventListener('hashchange',route);route();
+
+  /* ---------- шар ---------- */
   var cv=document.getElementById('orb'),ctx=cv.getContext('2d'),W=cv.width,H=cv.height;
   var cols=['#ff6b8b','#7c5cff','#38e1e6'],t=0;
-  var still=window.matchMedia('(prefers-reduced-motion: reduce)').matches;
   function draw(){
     var amp=0.12+0.05*Math.sin(t*1.7),R=W*0.2,cx=W/2,cy=H/2;
     ctx.clearRect(0,0,W,H);
@@ -109,9 +217,8 @@ footer a{color:var(--mute)}
     for(var i=0;i<3;i++){
       ctx.beginPath();
       for(var k=0;k<=72;k++){
-        var a=k/72*Math.PI*2,
-            n=Math.sin(a*(2+i)+t*1.4+i*2)+Math.sin(a*3-t*1.1),
-            r=R*(1+amp*n*0.9),x=cx+Math.cos(a)*r,y=cy+Math.sin(a)*r;
+        var a=k/72*Math.PI*2,n=Math.sin(a*(2+i)+t*1.4+i*2)+Math.sin(a*3-t*1.1),r=R*(1+amp*n*0.9);
+        var x=cx+Math.cos(a)*r,y=cy+Math.sin(a)*r;
         if(k===0)ctx.moveTo(x,y);else ctx.lineTo(x,y);
       }
       ctx.closePath();ctx.lineJoin='round';ctx.strokeStyle=cols[i];
@@ -119,9 +226,216 @@ footer a{color:var(--mute)}
       ctx.globalAlpha=1;ctx.lineWidth=5;ctx.stroke();
     }
   }
-  function loop(){t+=0.016;draw();requestAnimationFrame(loop)}
   draw();
-  if(!still)requestAnimationFrame(loop);
+  if(!window.matchMedia('(prefers-reduced-motion: reduce)').matches){
+    (function loop(){t+=0.016;draw();requestAnimationFrame(loop)})();
+  }
+
+  /* ---------- релизы с GitHub ---------- */
+  function loadReleases(){
+    try{var c=JSON.parse(localStorage.getItem('nova_rel')||'null');if(c&&Date.now()-c.t<600000)return Promise.resolve(c.d)}catch(e){}
+    return fetch('https://api.github.com/repos/'+REPO+'/releases?per_page=100',{headers:{Accept:'application/vnd.github+json'}})
+      .then(function(r){if(!r.ok)throw new Error(r.status);return r.json()})
+      .then(function(d){try{localStorage.setItem('nova_rel',JSON.stringify({t:Date.now(),d:d}))}catch(e){}return d});
+  }
+  function fmtDate(s){try{return new Date(s).toLocaleDateString('ru-RU',{day:'numeric',month:'long',year:'numeric'})}catch(e){return ''}}
+  function el(tag,text,cls){var e=document.createElement(tag);if(text!=null)e.textContent=text;if(cls)e.className=cls;return e}
+
+  function renderStats(rels){
+    var list=rels.filter(function(r){return !r.draft&&!r.prerelease});
+    if(!list.length)throw new Error('empty');
+    var last=list[0],total=0;
+    rels.forEach(function(r){(r.assets||[]).forEach(function(a){if(!/\.sha256$/i.test(a.name))total+=a.download_count||0})});
+    document.getElementById('st-ver').textContent=last.tag_name;
+    document.getElementById('st-date').textContent=fmtDate(last.published_at);
+    document.getElementById('st-dl').textContent=total.toLocaleString('ru-RU');
+    (last.assets||[]).forEach(function(a){
+      if(/^nova-setup\.exe$/i.test(a.name))document.getElementById('dl-setup').href=a.browser_download_url;
+      if(/^nova\.exe$/i.test(a.name))document.getElementById('dl-exe').href=a.browser_download_url;
+    });
+  }
+
+  function renderChangelog(rels){
+    var box=document.getElementById('rels');box.textContent='';
+    var list=rels.filter(function(r){return !r.draft});
+    if(!list.length){box.appendChild(el('p','Релизов пока нет.','empty'));return}
+    list.forEach(function(r,i){
+      var s=el('article',null,'rel'),h=el('h3',r.name||r.tag_name);
+      h.appendChild(el('time',fmtDate(r.published_at)));
+      if(i===0&&!r.prerelease)h.appendChild(el('span','последняя','badge'));
+      s.appendChild(h);
+      var ul=null;
+      (r.body||'').split(/\r?\n/).forEach(function(line){
+        line=line.trim();
+        if(!line||/^\*\*Full Changelog\*\*/i.test(line)||/^#+\s*What's Changed/i.test(line))return;
+        var m=line.match(/^[-*]\s+(.*)$/);
+        if(m){if(!ul){ul=el('ul');s.appendChild(ul)}ul.appendChild(el('li',m[1]))}
+        else{ul=null;s.appendChild(el('p',line.replace(/^#+\s*/,'')))}
+      });
+      if(!s.querySelector('ul')&&!s.querySelector('p'))s.appendChild(el('p','Мелкие улучшения и исправления.'));
+      var a=el('a','Открыть на GitHub');a.href=r.html_url;s.appendChild(a);
+      box.appendChild(s);
+    });
+  }
+
+  loadReleases().then(function(rels){
+    try{renderStats(rels)}catch(e){['st-ver','st-date','st-dl'].forEach(function(i){document.getElementById(i).textContent='—'})}
+    renderChangelog(rels);
+  }).catch(function(){
+    ['st-ver','st-date','st-dl'].forEach(function(i){document.getElementById(i).textContent='—'});
+    var box=document.getElementById('rels');box.textContent='';
+    var p=el('p','Не получилось загрузить список (у GitHub временный лимит запросов). Попробуй позже или открой ');
+    var a=el('a','страницу релизов');a.href='https://github.com/'+REPO+'/releases';p.appendChild(a);p.appendChild(document.createTextNode('.'));
+    box.appendChild(p);
+  });
+
+  /* ---------- команды ---------- */
+  var CMDS={
+    ru:[
+      ['Программы и сайты',[
+        ['открой дискорд · запусти блокнот','Запускает программу из меню «Пуск»'],
+        ['открой ютуб · открой github.com','Открывает сайт в браузере'],
+        ['закрой дискорд','Закрывает программу (спросит подтверждение)'],
+        ['создай сценарий работа: открой дискорд, открой хром','Сохраняет набор команд; потом достаточно сказать «работа»']]],
+      ['Поиск и музыка',[
+        ['найди рецепт борща','Ищет в Google'],
+        ['включи музыку джаз','Открывает поиск на YouTube'],
+        ['включи Daft Punk в спотифай','Открывает поиск в Spotify'],
+        ['включи Daft Punk на ютубе','Открывает поиск на YouTube'],
+        ['пауза · продолжи','Пауза и продолжение (работает в Spotify, YouTube и плеерах)'],
+        ['следующий трек · предыдущий трек','Переключает трек'],
+        ['что играет','Называет трек в Spotify или на открытой вкладке YouTube'],
+        ['компьютер громче · компьютер тише · заглуши компьютер','Громкость Windows'],
+        ['громкость компьютера 30','Ставит громкость Windows в процентах']]],
+      ['Таймеры и заметки',[
+        ['таймер на 5 минут','Ставит таймер'],
+        ['напомни через час позвонить маме','Напоминание с текстом'],
+        ['разбуди меня в 7:30','Будильник на время'],
+        ['какие у меня таймеры · отмени таймеры','Показывает и отменяет'],
+        ['запиши заметку купить хлеб','Сохраняет заметку'],
+        ['покажи заметки · удали заметки','Читает и очищает заметки']]],
+      ['Память',[
+        ['меня зовут Иван','Нова запомнит имя'],
+        ['запомни, что я люблю кофе','Запоминает факт'],
+        ['что ты обо мне знаешь','Рассказывает, что помнит'],
+        ['забудь всё','Стирает память']]],
+      ['Полезное',[
+        ['посчитай 25 умножить на 4 · 15 процентов от 200','Калькулятор'],
+        ['погода в Москве','Погода (город по умолчанию задаётся в настройках)'],
+        ['курс доллара · курс евро','Курс к рублю'],
+        ['который час · какое сегодня число','Время и дата'],
+        ['брось кубик · подбрось монету','Случайности'],
+        ['случайное число от 1 до 10','Случайное число'],
+        ['выбери чай или кофе','Выбирает за тебя']]],
+      ['Файлы и папки',[
+        ['создай файл заметки с текстом привет','Создаёт текстовый файл'],
+        ['создай pdf про космос на рабочем столе','Нова напишет текст через ИИ и сохранит PDF; так же docx, html, md, csv'],
+        ['создай папку проекты','Создаёт папку'],
+        ['открой загрузки · открой документы · открой рабочий стол','Открывает папки Windows'],
+        ['найди файл отчёт · прочитай файл отчёт','Поиск и чтение файла'],
+        ['открой его · покажи в папке','Открывает последний созданный файл'],
+        ['напиши код сортировки и сохрани в файл sort.py','ИИ пишет код и сохраняет файл'],
+        ['сохрани последний код в файл a.py','Сохраняет код из последнего ответа']]],
+      ['Экран и буфер обмена',[
+        ['сделай скриншот','Скриншот в буфер обмена и в файл'],
+        ['посмотри на экран · что у меня на экране','ИИ описывает, что на экране'],
+        ['какие окна открыты','Список окон на всех рабочих столах'],
+        ['прочитай буфер · прочитай выделенное','Озвучивает текст'],
+        ['объясни выделенное · переведи буфер · сократи выделенное','ИИ обрабатывает текст'],
+        ['скопируй код · скопируй ответ','Копирует последний код или ответ'],
+        ['сохрани чат · очисти чат','Работа с чатом']]],
+      ['Мышь, клавиатура, окна',[
+        ['кликни · правый клик · двойной клик','Клики мышью'],
+        ['кликни в точке 500 300','Клик по координатам'],
+        ['подвинь мышь вправо на 200 · мышь в центр','Движение курсора'],
+        ['прокрути вниз на 5','Прокрутка'],
+        ['напечатай привет','Вводит текст'],
+        ['нажми ctrl+shift+esc','Нажимает сочетание клавиш'],
+        ['сверни все окна · закрой окно · разверни окно · окно влево','Управление окнами'],
+        ['новый рабочий стол · следующий рабочий стол · рабочий стол 2','Виртуальные рабочие столы']]],
+      ['Система',[
+        ['проверь компьютер','Загрузка процессора, память, диск, видеокарта'],
+        ['проверь интернет · какой у меня айпи · к какому вайфаю подключён','Сеть'],
+        ['яркость 50','Яркость экрана (на ноутбуках)'],
+        ['заблокируй компьютер · спящий режим','Блокировка и сон'],
+        ['выключи компьютер через 10 минут · отмени выключение','Выключение с подтверждением'],
+        ['очисти корзину','Очищает корзину (спросит подтверждение)'],
+        ['открой настройки wifi','Открывает раздел настроек Windows']]],
+      ['Настройки самой Новы',[
+        ['говори быстрее · говори медленнее','Темп голоса'],
+        ['громче · тише','Громкость голоса Новы'],
+        ['выключи озвучку · включи озвучку','Голос вкл и выкл'],
+        ['настройки нова','Открывает настройки'],
+        ['проверь обновления · обнови себя · какая у тебя версия','Обновления'],
+        ['стоп · спасибо','Заканчивает разговор без имени'],
+        ['Ctrl+Alt+Пробел','Горячая клавиша: говорить даже при свёрнутом окне']]]
+    ],
+    en:[
+      ['Apps and sites',[
+        ['open chrome · open notepad','Launches an app'],
+        ['open youtube · go to github.com','Opens a website'],
+        ['close discord','Closes an app (asks first)']]],
+      ['Search and music',[
+        ['search for banana bread','Google search'],
+        ['play music jazz','Opens a YouTube search'],
+        ['play Daft Punk on spotify','Opens a Spotify search'],
+        ['play Daft Punk on youtube','Opens a YouTube search'],
+        ['pause · resume','Pause and resume'],
+        ['next track · previous track','Switches track'],
+        ["what's playing",'Names the track in Spotify or a YouTube tab'],
+        ['computer volume up · computer volume down','Windows volume']]],
+      ['Timers and notes',[
+        ['timer for 5 minutes','Sets a timer'],
+        ['remind me in an hour to call mom','Reminder with text'],
+        ['wake me at 7:30','Alarm'],
+        ['take a note buy bread · show my notes','Notes']]],
+      ['Useful',[
+        ['what is 25 times 4','Calculator'],
+        ['weather in Paris','Weather'],
+        ["what's the time · what's the date",'Time and date'],
+        ['roll a dice · flip a coin','Randomness'],
+        ['take a screenshot','Screenshot to the clipboard and a file'],
+        ["what's on my screen",'The AI describes your screen']]],
+      ['Computer',[
+        ['check my computer','CPU, memory, disk, GPU'],
+        ['lock the computer · sleep','Lock and sleep'],
+        ['minimize all · close window · maximize window','Windows'],
+        ['new desktop · next desktop · desktop 2','Virtual desktops'],
+        ['click · double click · scroll down','Mouse'],
+        ['type hello · press ctrl+shift+esc','Keyboard']]],
+      ['Nova itself',[
+        ['remember that I like coffee · forget everything','Memory'],
+        ['speak faster · volume up · turn off voice','Voice'],
+        ['check for updates · update yourself · what version are you','Updates'],
+        ['what can you do','Shows the command list']]]
+    ]
+  };
+  var lang='ru';
+  function renderCmds(){
+    var q=document.getElementById('q').value.trim().toLowerCase(),box=document.getElementById('cmds'),any=false;
+    box.textContent='';
+    CMDS[lang].forEach(function(cat){
+      var rows=cat[1].filter(function(r){return !q||(r[0]+' '+r[1]).toLowerCase().indexOf(q)>=0});
+      if(!rows.length)return;
+      any=true;
+      var s=el('div',null,'cat');s.appendChild(el('h3',cat[0]));
+      rows.forEach(function(r){
+        var d=el('div',null,'row');d.appendChild(el('div',r[0],'c'));d.appendChild(el('div',r[1],'d'));s.appendChild(d);
+      });
+      box.appendChild(s);
+    });
+    if(!any)box.appendChild(el('p','Ничего не найдено.','empty'));
+  }
+  function setLang(l){
+    lang=l;
+    document.getElementById('l-ru').setAttribute('aria-pressed',l==='ru');
+    document.getElementById('l-en').setAttribute('aria-pressed',l==='en');
+    renderCmds();
+  }
+  document.getElementById('l-ru').addEventListener('click',function(){setLang('ru')});
+  document.getElementById('l-en').addEventListener('click',function(){setLang('en')});
+  document.getElementById('q').addEventListener('input',renderCmds);
+  renderCmds();
 })();
 </script>
 </body>
