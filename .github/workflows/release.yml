@@ -34,9 +34,19 @@ jobs:
         shell: pwsh
         run: (Get-FileHash dist\Nova.exe -Algorithm SHA256).Hash.ToLower() | Out-File -Encoding ascii dist\Nova.exe.sha256
 
+      - name: Установщик
+        shell: pwsh
+        run: |
+          python -c "from PIL import Image; Image.open('icon.png').convert('RGBA').save('icon.ico', sizes=[(16,16),(32,32),(48,48),(64,64),(128,128),(256,256)])"
+          choco install innosetup -y --no-progress
+          $ver = "${{ github.ref_name }}".TrimStart("v")
+          & "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" "/DAppVersion=$ver" installer.iss
+          if ($LASTEXITCODE -ne 0) { throw "Inno Setup завершился с ошибкой" }
+
       - uses: softprops/action-gh-release@v2
         with:
+          body_path: RELEASE_NOTES.md
           files: |
             dist/Nova.exe
             dist/Nova.exe.sha256
-          generate_release_notes: true
+            dist/Nova-Setup.exe

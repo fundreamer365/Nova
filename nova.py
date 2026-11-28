@@ -2,7 +2,7 @@ import sys, os
 if sys.stdout is None: sys.stdout = open(os.devnull, "w")     # exe без консоли: print() не должен падать
 if sys.stderr is None: sys.stderr = open(os.devnull, "w")
 
-VERSION = "7.0.4"                      # ← именно эту строку читает самообновление; при выпуске правь её и тег релиза (v7.0.0)
+VERSION = "7.1.0"                      # ← именно эту строку читает самообновление; при выпуске правь её и тег релиза (v7.0.0)
 REPO = "fundreamer365/Nova"
 
 from difflib import SequenceMatcher
@@ -67,13 +67,32 @@ DEFAULT_CFG = dict(
     autosave=True, autosave_dir=str(HOME / "chats"), autosave_fmt="txt", autosave_sec=30, autosave_keep=30, restore_chat=False,
     work_dir=str(known_dir("Desktop") / "Nova"), allow_control=True, allow_power=True, allow_shell=False, confirm_actions=True,
     vision=True, img_side=1280,
-    auto_update=True, update_hours=6, auto_install=False, autostart=False, tray_close=False)
+    auto_update=True, update_hours=6, auto_install=False, autostart=False, tray_close=False,
+    hotkey="ctrl+alt+space", hotkey_on=True, skin="Волны", ui_theme="Ночь")
 UI_KEYS = {"font_size", "topmost", "opacity", "theme"}
 
 BG, PANEL, CARD, TEXT, MUTE = "#0b0d1a", "#151932", "#1f2547", "#eceeff", "#7f86b8"
 PINK, VIO, CYAN = "#ff6b8b", "#7c5cff", "#38e1e6"
+
+UI_PALETTES = {
+    "Ночь": dict(BG="#0b0d1a", PANEL="#151932", CARD="#1f2547", TEXT="#eceeff", MUTE="#7f86b8", PINK="#ff6b8b", VIO="#7c5cff", CYAN="#38e1e6"),
+    "Графит": dict(BG="#111214", PANEL="#1a1c1f", CARD="#272a2f", TEXT="#e8e9ea", MUTE="#8a8f98", PINK="#ff6b8b", VIO="#7c5cff", CYAN="#38e1e6"),
+    "Лес": dict(BG="#0a1410", PANEL="#12211a", CARD="#1d3427", TEXT="#e6f4ea", MUTE="#7fa08a", PINK="#ff8fa3", VIO="#40916c", CYAN="#95d5b2"),
+    "Бордо": dict(BG="#150a10", PANEL="#241019", CARD="#391a2b", TEXT="#f8e8ee", MUTE="#b0809a", PINK="#ff6b8b", VIO="#c2185b", CYAN="#ffb3c6"),
+    "Океан": dict(BG="#07131f", PANEL="#0e2234", CARD="#173551", TEXT="#e6f1fb", MUTE="#7a98b3", PINK="#ff9f6b", VIO="#2f80ed", CYAN="#56ccf2"),
+}
+try:     # тема окна читается до построения интерфейса, поэтому меняется после перезапуска
+    _pal = UI_PALETTES.get(json.loads((Path.home() / ".nova" / "memory.json").read_text("utf-8")).get("cfg", {}).get("ui_theme", "Ночь"))
+except Exception:
+    _pal = None
+if _pal:
+    BG, PANEL, CARD, TEXT, MUTE, PINK, VIO, CYAN = (_pal[k] for k in ("BG", "PANEL", "CARD", "TEXT", "MUTE", "PINK", "VIO", "CYAN"))
+
 THEMES = {"Аврора": (PINK, VIO, CYAN), "Океан": ("#4cc9f0", "#4361ee", "#7ae7c7"), "Закат": ("#ff9f1c", "#ff4d6d", "#c77dff"),
-          "Неон": ("#39ff14", "#00f5d4", "#f15bb5"), "Лёд": ("#b8c0ff", "#74c0fc", "#e0fbfc")}
+          "Неон": ("#39ff14", "#00f5d4", "#f15bb5"), "Лёд": ("#b8c0ff", "#74c0fc", "#e0fbfc"),
+          "Роза": ("#ff8fab", "#fb6f92", "#ffc2d1"), "Лес": ("#95d5b2", "#40916c", "#d8f3dc"),
+          "Золото": ("#ffd166", "#ef8354", "#fff1c1"), "Космос": ("#9d4edd", "#5a189a", "#e0aaff"),
+          "Монохром": ("#ffffff", "#adb5bd", "#dee2e6")}
 PERSONAS = {"Дружелюбная": "Ты дружелюбный голосовой помощник.",
             "Саркастичная": "Ты остроумный помощник с лёгким сарказмом, но всегда по делу и без грубости.",
             "Пират": "Ты весёлый пират-помощник: говоришь с морскими словечками, но отвечаешь по делу.",
@@ -446,6 +465,416 @@ def cleanup_old():
         time.sleep(1.5)
 
 
+# ---------- язык интерфейса, перевод ответов и английские команды ----------
+UI_LANG = "ru"
+EN_DAYS = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
+EN_MONTHS = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"]
+
+
+def set_ui_lang(lang):
+    global UI_LANG
+    UI_LANG = "en" if lang == "en" else "ru"
+
+
+def sys_lang():
+    """'ru' для русскоязычной Windows (русский, украинский, белорусский, казахский), иначе 'en'."""
+    try:
+        lid = ctypes.windll.kernel32.GetUserDefaultUILanguage() & 0x3FF
+        return "ru" if lid in (0x19, 0x22, 0x23, 0x3F) else "en"
+    except Exception:
+        return "ru"
+
+
+def en_dur(s):
+    def f(m):
+        n = int(m[1]); w = m[2]
+        base = "hour" if w.startswith("час") else "minute" if w.startswith("мин") else "second"
+        return f"{n} {base}{'' if n == 1 else 's'}"
+    return re.sub(r"(\d+) (час\w*|минут\w*|секунд\w*)", f, s)
+
+
+EN_EXACT = {
+    "⬆ Обновить": "⬆ Update", "Говорить": "Speak", "Пропустить": "Skip", "Ты": "You",
+    "Диалог без нажатий": "Hands-free conversation",
+    "Напиши команду, вопрос или вставь фото (Ctrl+V)": "Type a command or a question, or paste a photo (Ctrl+V)",
+    "Поиск по чату (Enter — дальше, Esc — закрыть)": "Search the chat (Enter — next, Esc — close)",
+    "Нажми на шар и говори или пиши внизу": "Click the orb and speak, or type below",
+    "Слушаю… (Esc — отмена)": "Listening… (Esc to cancel)", "Думаю…": "Thinking…",
+    "Говорю… (Esc — пропустить)": "Speaking… (Esc to skip)",
+    "Слушаю — имя говорить не нужно": "Listening — no need to say my name",
+    "Скачиваю обновление…": "Downloading the update…", "Проверяю обновления…": "Checking for updates…",
+    "Код скопирован": "Code copied", "Файл не найден": "File not found", "Чат сохранён": "Chat saved",
+    "Открыть файл / папку": "Open file / folder", "Показать в папке": "Show in folder", "Копировать путь": "Copy path",
+    "Копировать выделенное   Ctrl+C": "Copy selection   Ctrl+C", "Копировать последний ответ": "Copy last answer",
+    "Выделить всё   Ctrl+A": "Select all   Ctrl+A", "Озвучить выделенное": "Read selection aloud",
+    "Поиск по чату   Ctrl+F": "Search the chat   Ctrl+F", "Сохранить чат…": "Save chat…", "Очистить чат   Ctrl+L": "Clear chat   Ctrl+L",
+    "Открыть": "Open", "Выход": "Quit", "Подтверждение": "Confirm", "Настройки": "Settings",
+    # окно настроек
+    "Озвучка": "Voice", "Микрофон и распознавание": "Microphone and recognition", "ИИ": "AI", "Интерфейс": "Interface",
+    "Отклик на имя и диалог": "Wake name and conversation", "Фото, файлы и зрение": "Photos, files and vision",
+    "Управление компьютером": "Computer control", "Автосохранение чата": "Chat autosave", "Обновления и запуск": "Updates and startup",
+    "Данные": "Data",
+    "Озвучивать ответы": "Speak the answers aloud", "Текст появляется синхронно со словами": "Text appears in sync with the words",
+    "Темп, %": "Speed, %", "Тон, Гц": "Pitch, Hz", "Громкость, %": "Volume, %", "Проверить голос": "Test the voice",
+    "Микрофон": "Microphone", "Язык речи": "Speech language",
+    "Чувствительность (меньше = чувствительнее)": "Sensitivity (lower = more sensitive)",
+    "Пауза до конца фразы, с": "Pause that ends a phrase, s", "Ждать начала речи, с": "Wait for speech to start, s",
+    "Макс. длина записи, с": "Max recording length, s",
+    "Отвечать через ИИ": "Answer with AI", "Запоминать факты обо мне автоматически": "Remember facts about me automatically",
+    "Длина ответа": "Answer length", "Характер помощника": "Assistant personality",
+    "Сервис ИИ (сам подставит адрес и модель)": "AI service (fills in the address and model)",
+    "Модель": "Model", "API-ключ ИИ": "AI API key", "Адрес ИИ (пусто = по умолчанию)": "AI address (empty = default)",
+    "Получить бесплатный ключ для этого сервиса": "Get a free key for this service", "Проверить ИИ": "Test the AI",
+    "Сообщений в контексте": "Messages in context", "Таймаут ответа, с": "Answer timeout, s",
+    "Имя помощника": "Assistant name", "Язык интерфейса / Interface language": "Interface language",
+    "Город для погоды": "City for the weather", "Цвет шара": "Orb color", "Вид шара (скин)": "Orb style (skin)",
+    "Тема окна (после перезапуска)": "Window theme (after restart)", "Перезапустить Нову": "Restart Nova",
+    "Автокопирование выделенного текста": "Copy selected text automatically", "Закрытие окна сворачивает в трей": "Closing the window minimizes to the tray",
+    "Глобальная горячая клавиша для голоса": "Global hotkey for voice", "Сочетание клавиш (после перезапуска)": "Key combination (after restart)",
+    "Размер шрифта": "Font size", "Прозрачность окна, %": "Window opacity, %", "Поверх всех окон": "Always on top",
+    "Отзываться на своё имя (микрофон слушает всегда)": "Respond to my name (the microphone is always listening)",
+    "Другие варианты имени (через запятую)": "Other spellings of the name (comma-separated)",
+    "Продолжать без имени после ответа, с (0 — выкл)": "Keep listening without the name after an answer, s (0 = off)",
+    "Короткий сигнал, когда услышала своё имя": "Short beep when I hear my name",
+    "Озвучивать ответы на напечатанное": "Speak answers to typed messages",
+    "Распознавание речи идёт через сервис Google, поэтому при включённом отклике на имя звук с микрофона отправляется туда. Если это не нужно — выключи переключатель.":
+        "Speech recognition runs through a Google service, so with the wake name on, microphone audio is sent there. If you don't want that, turn the switch off.",
+    "ИИ может смотреть фото и экран": "AI can look at photos and the screen", "Размер фото для ИИ, px": "Photo size for AI, px",
+    "Разрешить управление мышью и клавиатурой": "Allow mouse and keyboard control",
+    "Разрешить закрывать программы, сон и выключение": "Allow closing programs, sleep and shutdown",
+    "Разрешить команды терминала": "Allow terminal commands", "Спрашивать подтверждение у опасных действий": "Ask before dangerous actions",
+    "Папка для создаваемых файлов": "Folder for created files", "Выбрать папку…": "Choose folder…",
+    "Сохранять чат автоматически": "Save the chat automatically", "Показывать прошлый чат при запуске": "Show the previous chat on startup",
+    "Папка автосохранения": "Autosave folder", "Формат файла": "File format", "Как часто, сек": "How often, sec",
+    "Сколько файлов хранить": "How many files to keep", "Сохранить чат сейчас": "Save the chat now", "Открыть папку с чатами": "Open the chats folder",
+    "Проверять обновления автоматически": "Check for updates automatically",
+    "Устанавливать найденные обновления без вопросов": "Install found updates without asking",
+    "Как часто проверять, ч": "How often to check, h", "Запускать Нову вместе с Windows": "Start Nova with Windows",
+    "Проверить обновления сейчас": "Check for updates now", "Сохранить чат в файл…": "Save the chat to a file…",
+    "Очистить историю диалога": "Clear the conversation history", "Очистить кэш озвучки": "Clear the voice cache", "Сбросить настройки": "Reset settings",
+    "Голос выбирается в главном окне. Имя применится после перезапуска.": "The voice is chosen in the main window. A new name applies after restart.",
+    # ответы
+    "Готово.": "Done.", "Открываю.": "Opening.", "Показываю.": "Showing.", "Записала.": "Noted.", "Запомнила.": "Got it, I'll remember that.",
+    "Слушаю.": "I'm listening.", "Не расслышала, повтори, пожалуйста.": "Sorry, I didn't catch that. Please say it again.",
+    "Нет связи с сервисом распознавания речи.": "I can't reach the speech recognition service.",
+    "ИИ отключён в настройках.": "AI is turned off in the settings.",
+    "Привет! Так я звучу с текущими настройками.": "Hi! This is how I sound with the current settings.",
+    "(голос недоступен — проверь интернет)": "(voice unavailable — check your internet)",
+    "Хорошо, не обновляю.": "Okay, I won't update.", "Обновление уже идёт.": "An update is already in progress.",
+    "Нет связи с GitHub.": "Can't reach GitHub.", "GitHub временно ограничил запросы — попробую позже.": "GitHub has temporarily limited requests — I'll try later.",
+    "Хорошо, я на связи.": "Okay, I'm here.", "Всегда пожалуйста!": "You're welcome!",
+    "Говорю быстрее.": "Speaking faster.", "Говорю медленнее.": "Speaking slower.", "Громче.": "Louder.", "Тише.": "Quieter.",
+    "Озвучка выключена, отвечаю текстом.": "Voice is off, I'll reply with text.", "Озвучка включена.": "Voice is on.",
+    "Открываю настройки.": "Opening the settings.", "Таймер сработал!": "Time's up!",
+    "На сколько? Например: «таймер на 5 минут», «напомни через час позвонить маме» или «разбуди меня в 7:30».":
+        "For how long? For example: “timer for 5 minutes”, “remind me in an hour to call mom” or “wake me at 7:30”.",
+    "Максимум — сутки.": "The maximum is 24 hours.", "Активных таймеров нет.": "There are no active timers.",
+    "Вот активные таймеры.": "Here are your active timers.", "Отменила.": "Cancelled.", "Таймеров и так нет.": "There are no timers anyway.",
+    "Заметок пока нет.": "No notes yet.", "Заметки удалены.": "Notes deleted.", "Вот твои заметки.": "Here are your notes.",
+    "Всё стёрла. Начинаем с чистого листа.": "Everything erased. A fresh start.", "Готово, забыла.": "Done, I forgot it.",
+    "Вот что я о тебе знаю.": "Here's what I know about you.",
+    "Пока почти ничего. Расскажи о себе или скажи «запомни, что…».": "Almost nothing yet. Tell me about yourself or say “remember that…”.",
+    "Орёл.": "Heads.", "Решка.": "Tails.", "Буфер обмена пуст.": "The clipboard is empty.", "Ничего не выделено.": "Nothing is selected.",
+    "Скопировала код.": "Code copied.", "Скопировала ответ.": "Answer copied.", "Кода пока не было.": "There's no code yet.",
+    "Пока нечего копировать.": "Nothing to copy yet.", "Выбери, куда сохранить.": "Choose where to save it.",
+    "Клик.": "Click.", "Правый клик.": "Right click.", "Двойной клик.": "Double click.", "Напечатала.": "Typed.", "Прокручиваю.": "Scrolling.",
+    "Свернула всё.": "Minimized everything.", "Развернула.": "Maximized.", "Свернула.": "Minimized.", "Закрываю окно.": "Closing the window.",
+    "Переключаю.": "Switching.", "Блокирую.": "Locking.", "Следующий.": "Next.", "Предыдущий.": "Previous.",
+    "Создала новый рабочий стол.": "Created a new desktop.", "Показываю все столы.": "Showing all desktops.",
+    "Папка создана.": "Folder created.", "Дописала.": "Appended.", "Вот содержимое файла.": "Here are the file's contents.",
+    "Я пока ничего не создавала и не показывала.": "I haven't created or shown anything yet.",
+    "Файл не открылся — возможно, его уже удалили.": "The file didn't open — maybe it was deleted.",
+    "Не получилось узнать погоду — проверь интернет.": "Couldn't get the weather — check your internet.",
+    "Не получилось узнать курс — проверь интернет.": "Couldn't get the exchange rate — check your internet.",
+    "Интернета нет или он очень нестабильный.": "There's no internet, or it's very unstable.",
+    "Не вижу, что сейчас играет: нужен открытый Spotify или вкладка YouTube.": "I can't tell what's playing: I need Spotify open or a YouTube tab.",
+    "Мелкие улучшения и исправления": "Minor improvements and fixes",
+    "Проверяю ИИ…": "Testing the AI…",
+}
+_EN_SUB_SRC = [
+    (r"^Привет((?:, .+?)?)! Спроси что угодно или скажи «что ты умеешь»\.", r"Hi\1! Ask me anything or say “what can you do”."),
+    (r"^Жду обращения: скажи «(.+?)…»\s+\(или пиши внизу\)", r"Waiting for you: say “\1…” (or type below)"),
+    (r"^Отзываться на имя «(.+?)»", r"Respond to the name “\1”"),
+    (r"^⬆ Обновить до (.+)", r"⬆ Update to \1"),
+    (r"Доступно обновление (\S+) → (\S+)\. Нажми «⬆ Обновить» вверху или скажи «обнови себя»\.",
+     r"Update available: \1 → \2. Click “⬆ Update” at the top or say “update yourself”."),
+    (r"^Обновить Нову (\S+) → (\S+)\?\nПриложение перезапустится\.", r"Update Nova \1 → \2?\nThe app will restart."),
+    (r"^У тебя последняя версия — (.+)\.", r"You have the latest version — \1."),
+    (r"^Моя версия (.+)\.", r"My version is \1."),
+    (r"^Есть обновление до версии (\S+)\. Скажи «обнови себя», и я поставлю\.", r"An update to version \1 is available. Say “update yourself” and I'll install it."),
+    (r"^\*\*Что нового в версии (.+?)\*\*", r"**What's new in version \1**"),
+    (r"^Максимум (\d+) фото и (\d+) файлов — лишнее пропущено", r"Maximum \1 photos and \2 files — the extra ones were skipped"),
+    (r"^Версия (.+?) · репозиторий (.+?) · (exe|скрипт)", lambda m: f"Version {m[1]} · repository {m[2]} · {'script' if m[3] == 'скрипт' else 'exe'}"),
+    (r"^Открываю (.+)\.", r"Opening \1."),
+    (r"^Запускаю (.+)\.", r"Launching \1."),
+    (r"^Не нашла программу «(.+?)»\. Могу поискать в Google — скажи «найди (.+?)»\.", r"I couldn't find the app “\1”. I can search Google — say “search for \2”."),
+    (r"^Ищу в Spotify: (.+)\.", r"Searching Spotify for: \1."),
+    (r"^Ищу: (.+)\.", r"Searching for: \1."),
+    (r"^Включаю: (.+)\.", r"Playing: \1."),
+    (r"^Сейчас играет в Spotify: (.+)\.", r"Now playing on Spotify: \1."),
+    (r"^На YouTube: (.+)\.", r"On YouTube: \1."),
+    (r"^Сейчас (\d\d:\d\d)\.", r"It's \1."),
+    (r"^Сегодня (\S+), (\d+) (\S+)\.",
+     lambda m: f"Today is {EN_DAYS[DAYS.index(m[1])] if m[1] in DAYS else m[1]}, {EN_MONTHS[MONTHS.index(m[3])] if m[3] in MONTHS else m[3]} {m[2]}."),
+    (r"^Таймер на (.+) запущен\.", lambda m: f"Timer set for {en_dur(m[1])}."),
+    (r"^Напомню (.+) через (.+)\.", lambda m: f"Reminder set: {m[1]} in {en_dur(m[2])}."),
+    (r"^Поставила будильник на (.+)\.", r"Alarm set for \1."),
+    (r"^Напоминаю: (.+)\.", r"Reminder: \1."),
+    (r"осталось ([^\n]+)", lambda m: "time left: " + en_dur(m[1])),
+    (r"^- Таймер:", "- Timer:"),
+    (r"^Получается (.+)\.", r"That's \1."),
+    (r"^(.+): (.+), (.+), ощущается как (.+)\.$", r"\1: \2, \3, feels like \4."),
+    (r"^Не нашла город «(.+?)»\.", r"I couldn't find the city “\1”."),
+    (r"\*\*Ветер:\*\*", "**Wind:**"), (r"\*\*Влажность:\*\*", "**Humidity:**"),
+    (r" километров в час", " km/h"), (r" метров в секунду", " m/s"),
+    (r"^Сейчас один (\S+) стоит примерно (.+) рубля\.", r"One \1 is about \2 rubles right now."),
+    (r"^Приятно познакомиться, (.+)! Запомнила\.", r"Nice to meet you, \1! I'll remember that."),
+    (r"^Выпало (\d+)\.", r"You got \1."),
+    (r"^Выбираю: (.+)\.", r"I pick: \1."),
+    (r"^Нажала (.+)\.", r"Pressed \1."),
+    (r"^Перехожу на стол (\d+)\.", r"Switching to desktop \1."),
+    (r"^Громкость (\d+)\.", r"Volume \1."),
+    (r"^Курсор в точке (\d+), (\d+)\.", r"The cursor is at \1, \2."),
+    (r"^Скриншот сделан\. Он уже в буфере обмена — вставляй через Ctrl\+V\.", "Screenshot taken. It's already in the clipboard — paste with Ctrl+V."),
+    (r"^Скриншот сделан\. Он сохранён в файл\.", "Screenshot taken. It's saved to a file."),
+    (r"Клик по пути открывает файл, правая кнопка — показать в папке\.", "Click the path to open the file, right-click to show it in the folder."),
+    (r"^Готово, создала файл (.+?)\. Лежит здесь: (.+)\.", r"Done, I created the file \1. It's in: \2."),
+    (r"^Готово, создала (\d+) файла\. Лежит здесь: (.+)\.", r"Done, I created \1 files. They're in: \2."),
+    (r"^Файл (.+) создан\.", r"File \1 created."),
+    (r"^Сохранила в (.+)\.", r"Saved to \1."),
+    (r"^Нашла: (\d+)\.", r"Found: \1."),
+    (r"^Файл «(.+?)» не нашла\.", r"I couldn't find the file “\1”."),
+    (r"^Процессор загружен на (\d+) процентов, память занята на (\d+), на диске свободно (\d+) гигабайт\.",
+     r"The CPU is at \1 percent, memory is \2 percent used, and \3 gigabytes are free on the disk."),
+    (r" Больше всего памяти ест (.+)\.", r" The biggest memory user is \1."),
+    (r" Нагрузка высокая, стоит закрыть лишнее\.", " The load is high, consider closing something."),
+    (r"\*\*Процессор:\*\* (\d+) ядер / (\d+) потоков, загрузка (\d+)%", r"**CPU:** \1 cores / \2 threads, \3% load"),
+    (r"\*\*Память:\*\* (.+?) из (.+?) ГБ", r"**Memory:** \1 of \2 GB"),
+    (r"\*\*Диск:\*\* свободно (\d+) из (\d+) ГБ", r"**Disk:** \1 of \2 GB free"),
+    (r"\*\*Видеокарта:\*\*", "**GPU:**"), (r"\*\*Батарея:\*\*", "**Battery:**"), (r" \(заряжается\)", " (charging)"),
+    (r"\*\*Без перезагрузки:\*\* (.+) ч", r"**Uptime:** \1 h"), (r"\*\*Больше всего памяти:\*\*", "**Top memory users:**"),
+    (r"^Микрофон недоступен: (.+)", r"Microphone unavailable: \1"), (r"^Ошибка: (.+)", r"Error: \1"),
+    (r"^ИИ работает\. Ответ: (.+)", r"The AI works. Answer: \1"),
+    (r"^ИИ не принял ключ \(ошибка 401\): он неверный или пустой\. Вставь ключ целиком, без пробелов\.", "The AI didn't accept the key (error 401): it's wrong or empty. Paste the whole key, without spaces."),
+    (r"^На этом ключе закончились лимиты \(ошибка 402\)\. Выбери в настройках другой сервис ИИ, например Groq\.", "This key is out of quota (error 402). Pick another AI service in the settings, for example Groq."),
+    (r"^Ключу нельзя пользоваться этим сервисом или моделью \(ошибка 403\)\. Попробуй другой сервис ИИ в настройках\.", "This key can't be used with this service or model (error 403). Try another AI service in the settings."),
+    (r"^У выбранного сервиса нет такой модели \(ошибка 404\)\. Выбери сервис заново или поправь поле «Модель»\.", "The selected service has no such model (error 404). Choose the service again or fix the “Model” field."),
+    (r"^ИИ сейчас перегружен или лимит исчерпан\. Попробуй через минуту\.", "The AI is overloaded or the limit is used up. Try again in a minute."),
+    (r"^Сервис ИИ ответил ошибкой (\d+)\. Подробности записаны в файл nova\.log в папке \.nova\.", r"The AI service returned error \1. Details are in nova.log in the .nova folder."),
+    (r"^Не смогла связаться с ИИ\. Проверь интернет\. Подробности записаны в файл nova\.log\. Команды вроде диагностики и запуска программ работают и без него\.",
+     "I couldn't reach the AI. Check your internet. Details are in nova.log. Commands like diagnostics and launching apps work without it."),
+    (r"^ИИ слишком долго отвечает\. Попробуй ещё раз\.", "The AI is taking too long to answer. Try again."),
+    (r"^ИИ не принял ключ", "The AI didn't accept the key"),
+]
+EN_SUB = [(re.compile(p, re.S | re.M), r) for p, r in _EN_SUB_SRC]
+
+
+def tr(s):
+    """Перевод строки интерфейса на английский (если выбран английский). Незнакомые строки остаются как есть."""
+    if UI_LANG != "en" or not isinstance(s, str) or not s.strip():
+        return s
+    hit = EN_EXACT.get(s.strip())
+    if hit is not None:
+        return s[:len(s) - len(s.lstrip())] + hit + s[len(s.rstrip()):]
+    for rx, rep in EN_SUB:
+        s = rx.sub(rep, s)
+    return s
+
+
+def retranslate(root):
+    """Переводит готовые виджеты окна (надписи, кнопки, подсказки в полях)."""
+    if UI_LANG != "en":
+        return
+    try:
+        for w in root.findChildren(QWidget):
+            try:
+                if isinstance(w, (QLabel, QPushButton)) and w.text():
+                    w.setText(tr(w.text()))
+                if isinstance(w, QLineEdit) and w.placeholderText():
+                    w.setPlaceholderText(tr(w.placeholderText()))
+            except Exception:
+                pass
+        root.setWindowTitle(tr(root.windowTitle()))
+    except Exception:
+        pass
+
+
+EN_APPS = {"notepad": "блокнот", "calculator": "калькулятор", "file explorer": "проводник", "explorer": "проводник",
+           "task manager": "диспетчер задач", "paint": "пэйнт", "settings": "настройки", "windows settings": "настройки",
+           "terminal": "терминал", "command prompt": "командную строку", "google": "гугл", "gmail": "почту", "mail": "почту",
+           "maps": "карты", "github": "гитхаб", "twitch": "твич", "vk": "вк"}
+_FOLDERS = {"downloads": "загрузки", "documents": "документы", "desktop": "рабочий стол", "pictures": "картинки",
+            "music": "музыку", "videos": "видео"}
+_UNITS = r"(seconds?|secs?|minutes?|mins?|hours?|hrs?)"
+
+
+def _ru_unit(n, u):
+    u = u.lower()
+    return f"{n} " + ("секунд" if u.startswith("s") else "минут" if u.startswith("m") else "часов")
+
+
+def _en_calc(expr):
+    e = expr.lower()
+    for a, b in (("multiplied by", "умножить на"), ("times", "умножить на"), ("divided by", "разделить на"), ("plus", "плюс"),
+                 ("minus", "минус"), ("percent of", "процентов от"), ("to the power of", "в степени"), ("squared", "в квадрате"),
+                 ("cubed", "в кубе"), ("over", "разделить на")):
+        e = e.replace(a, b)
+    return "посчитай " + e if calc(e) is not None else None
+
+
+_EN_CMD_SRC = [
+    (r"(?:what can you do|what are your commands|help(?: me)?|commands)", lambda m: "__help__"),
+    (r"(?:what(?:'s| is) the time|what time is it|tell me the time|current time)", lambda m: "который час"),
+    (r"(?:what(?:'s| is) (?:the )?(?:date|day)(?: today)?|what day is it(?: today)?|today'?s date)", lambda m: "какое сегодня число"),
+    (r"(?:what(?:'s| is) )?(?:the )?weather(?: like)?(?: (?:in|for|at) (.+?))?(?: today| now| right now)?",
+     lambda m: "погода" + (f" в {m[1]}" if m[1] else "")),
+    (r"(?:set |start |make )?(?:a |an )?(?:timer|alarm)(?: for| of)? (\d+(?:\.\d+)?) ?" + _UNITS, lambda m: "таймер на " + _ru_unit(m[1], m[2])),
+    (r"remind me (?:in|after) (\d+(?:\.\d+)?) ?" + _UNITS + r"(?: to| that)? (.+)", lambda m: f"напомни через {_ru_unit(m[1], m[2])} {m[3]}"),
+    (r"(?:wake me|set an alarm)(?: up)? at (\d{1,2})[: .](\d{2})", lambda m: f"разбуди меня в {m[1]}:{m[2]}"),
+    (r"(?:cancel|stop|delete|clear)(?: all)?(?: my)? (?:timers?|reminders?)", lambda m: "отмени все таймеры"),
+    (r"(?:what|which|show|list)\b.*\b(?:timers?|reminders?)\b.*", lambda m: "какие у меня таймеры"),
+    (r"(?:take |make |grab )?(?:a )?screenshot|capture (?:the |my )?screen", lambda m: "сделай скриншот"),
+    (r"(?:what(?:'s| is) on my screen|what do you see|look at (?:my )?screen|describe (?:my )?screen)", lambda m: "что у меня на экране"),
+    (r"(?:which|what) (?:windows|apps|programs) are open", lambda m: "какие окна открыты"),
+    (r"(?:stop|cancel|never ?mind|enough)", lambda m: "стоп"),
+    (r"(?:thanks|thank you)(?: a lot| so much)?", lambda m: "спасибо"),
+    (r"(?:what(?:'s| is) (?:this song|playing|this track|the song)|what song is this|now playing|what(?:'s| is) playing now)", lambda m: "что играет"),
+    (r"(?:(?:pause|resume|continue|stop)(?: the)? (?:music|song|track|video|playback))|pause|resume|continue|play", lambda m: "пауза"),
+    (r"(?:previous|last|go back)(?: track| song)?|play (?:the )?previous(?: track| song)?", lambda m: "предыдущий трек"),
+    (r"(?:next|skip)(?: the| this)?(?: track| song)?", lambda m: "следующий трек"),
+    (r"play (.+?) (?:on|in|with) spotify", lambda m: f"включи {m[1]} в спотифай"),
+    (r"spotify[, ]+(?:play|search(?: for)?) (.+)", lambda m: f"включи {m[1]} в спотифай"),
+    (r"play (.+?) (?:on|in) youtube(?: music)?", lambda m: f"включи {m[1]} на ютубе"),
+    (r"play (?:some )?music(?: (?:by|from|like|called))? ?(.*)", lambda m: "включи музыку " + m[1]),
+    (r"play (.+)", lambda m: "включи музыку " + m[1]),
+    (r"computer volume (up|down)|(?:turn )?(?:the )?(?:system|computer) volume (up|down)",
+     lambda m: "компьютер " + ("громче" if "up" in (m[1] or m[2]) else "тише")),
+    (r"(?:mute|silence) (?:the )?(?:computer|pc|sound)", lambda m: "заглуши компьютер"),
+    (r"set (?:the )?(?:computer|system) volume to (\d+)", lambda m: f"громкость компьютера на {m[1]}"),
+    (r"(?:volume up|louder|turn it up)", lambda m: "громче"),
+    (r"(?:volume down|quieter|turn it down)", lambda m: "тише"),
+    (r"speak (faster|slower)", lambda m: "говори " + ("быстрее" if m[1] == "faster" else "медленнее")),
+    (r"(?:turn |switch )?(off|on) (?:your |the )?voice", lambda m: ("выключи" if m[1] == "off" else "включи") + " озвучку"),
+    (r"(?:open )?nova(?:'s)? settings", lambda m: "настройки нова"),
+    (r"check (?:for )?updates?|any updates|is there an update", lambda m: "проверь обновления"),
+    (r"update (?:yourself|nova)", lambda m: "обнови себя"),
+    (r"what version are you|(?:what(?:'s| is) )?your version", lambda m: "какая у тебя версия"),
+    (r"(?:what(?:'s| is)|how much is|calculate|compute)\s+(.*\d.*)", lambda m: _en_calc(m[1])),
+    (r"roll (?:a )?(?:dice|die)", lambda m: "брось кубик"),
+    (r"flip (?:a )?coin", lambda m: "подбрось монету"),
+    (r"(?:give me a )?random number(?: between (\d+) and (\d+))?", lambda m: "случайное число" + (f" от {m[1]} до {m[2]}" if m[1] else "")),
+    (r"(?:choose|pick) (?:between )?(.+?) or (.+)", lambda m: f"выбери {m[1]} или {m[2]}"),
+    (r"(?:take|make|write|add)(?: a)? note(?::| that)? (.+)|note (.+)", lambda m: "запиши заметку " + (m[1] or m[2])),
+    (r"(?:show|read|list)(?: me)?(?: my)? notes", lambda m: "покажи заметки"),
+    (r"(?:delete|clear)(?: all)?(?: my)? notes", lambda m: "удали заметки"),
+    (r"remember (?:that )?(.+)", lambda m: "запомни, что " + m[1]),
+    (r"my name is (\w+)", lambda m: "меня зовут " + m[1]),
+    (r"what do you know about me", lambda m: "что ты обо мне знаешь"),
+    (r"forget (?:everything|all)", lambda m: "забудь всё"),
+    (r"(?:check|test) (?:my )?(?:computer|pc)|diagnostics|pc status|why is my (?:pc|computer) slow", lambda m: "проверь компьютер"),
+    (r"check (?:my )?internet|am i online|ping", lambda m: "проверь интернет"),
+    (r"what(?:'s| is) my ip(?: address)?", lambda m: "какой у меня ip"),
+    (r"lock (?:the |my )?(?:computer|pc|screen)", lambda m: "заблокируй компьютер"),
+    (r"(?:minimi[sz]e (?:all|everything)|show (?:the )?desktop)", lambda m: "сверни все окна"),
+    (r"close (?:this |the )?window", lambda m: "закрой окно"),
+    (r"minimi[sz]e (?:this |the )?window", lambda m: "сверни окно"),
+    (r"(?:maximi[sz]e|fullscreen)(?: (?:this |the )?window)?", lambda m: "разверни окно"),
+    (r"(?:new|create(?: a)?(?: new)?) (?:virtual )?desktop", lambda m: "новый рабочий стол"),
+    (r"(?:next|right) desktop", lambda m: "следующий рабочий стол"),
+    (r"(?:previous|left) desktop", lambda m: "предыдущий рабочий стол"),
+    (r"desktop (\d)", lambda m: f"рабочий стол {m[1]}"),
+    (r"restart (?:the |my )?(?:computer|pc)", lambda m: "перезагрузи компьютер"),
+    (r"(?:shut ?down|turn off) (?:the |my )?(?:computer|pc)(?: in (\d+) (minutes?|hours?))?",
+     lambda m: "выключи компьютер" + (f" через {m[1]} {'часов' if m[2].startswith('h') else 'минут'}" if m[1] else "")),
+    (r"(?:cancel|abort) (?:the )?shut ?down", lambda m: "отмени выключение"),
+    (r"sleep(?: mode)?|put (?:the |my )?(?:computer|pc) to sleep", lambda m: "спящий режим"),
+    (r"empty (?:the )?recycle bin", lambda m: "очисти корзину"),
+    (r"brightness (?:to )?(\d+)", lambda m: f"яркость {m[1]}"),
+    (r"(?:right[- ]click)", lambda m: "правый клик"),
+    (r"(?:double[- ]click)", lambda m: "двойной клик"),
+    (r"click", lambda m: "кликни"),
+    (r"scroll (up|down)(?: (\d+))?", lambda m: "прокрути " + ("вверх" if m[1] == "up" else "вниз") + (f" на {m[2]}" if m[2] else "")),
+    (r"type (.+)", lambda m: "напечатай " + m[1]),
+    (r"press (.+)", lambda m: "нажми " + m[1]),
+    (r"read (?:the )?clipboard", lambda m: "прочитай буфер"),
+    (r"read (?:the )?(?:selected(?: text)?|selection)", lambda m: "прочитай выделенное"),
+    (r"(summari[sz]e|explain|translate|fix|improve|shorten) (?:the )?(clipboard|selected(?: text)?|selection)",
+     lambda m: {"summarize": "перескажи", "summarise": "перескажи", "explain": "объясни", "translate": "переведи", "fix": "исправь",
+                "improve": "улучши", "shorten": "сократи"}[m[1].lower()] + (" буфер" if m[2].lower() == "clipboard" else " выделенное")),
+    (r"copy (?:the )?(?:last )?code", lambda m: "скопируй код"),
+    (r"copy (?:the )?(?:last )?(?:answer|reply)", lambda m: "скопируй ответ"),
+    (r"save (?:the )?chat", lambda m: "сохрани чат"),
+    (r"clear (?:the )?chat", lambda m: "очисти чат"),
+    (r"create (?:a )?folder (?:called |named )?(.+)", lambda m: "создай папку " + m[1]),
+    (r"make (?:me )?(?:a )?(pdf|word|docx|text|txt|html|csv)(?: file| document)? (?:about|on) (.+)",
+     lambda m: f"создай {m[1]} файл про {m[2]}"),
+    (r"create (?:a )?(?:text )?file (?:called |named )?(.+?)(?: with (?:the )?text (.+))?",
+     lambda m: "создай файл " + m[1] + (f" с текстом {m[2]}" if m[2] else "")),
+    (r"find (?:my )?file (.+)", lambda m: "найди файл " + m[1]),
+    (r"read (?:the )?file (.+)", lambda m: "прочитай файл " + m[1]),
+    (r"open (?:the )?file (.+)", lambda m: "открой файл " + m[1]),
+    (r"show (?:it|the file) in (?:the )?folder", lambda m: "покажи в папке"),
+    (r"create (?:a )?(?:scenario|macro) (.+?): (.+)", lambda m: f"создай сценарий {m[1]}: {m[2]}"),
+    (r"(?:run|start) (?:the )?(?:scenario|macro) (.+)", lambda m: "выполни сценарий " + m[1]),
+    (r"(?:search(?: for)?|google|look up|find)\s+(.+)", lambda m: "найди " + m[1]),
+    (r"(?:open|launch|start|run|go to)\s+(?:my\s+)?(downloads|documents|desktop|pictures|music|videos)(?: folder)?",
+     lambda m: "открой " + _FOLDERS[m[1].lower()]),
+    (r"(?:close|quit|exit|kill|terminate)\s+(?:the\s+)?(?:app\s+|program\s+)?(.+)", lambda m: "закрой " + EN_APPS.get(m[1].lower(), m[1])),
+    (r"(?:open|launch|start|run|go to)\s+(?:the\s+)?(.+)", lambda m: "открой " + EN_APPS.get(m[1].lower(), m[1])),
+]
+EN_CMD = [(re.compile(p, re.I | re.S), f) for p, f in _EN_CMD_SRC]
+
+EN_HELP = ("I can check your computer, open apps and websites, search Google, play music, remember things about you and answer questions like an AI.",
+           "- **Apps and sites:** “open chrome”, “open youtube”, “close discord”\n"
+           "- **Search and music:** “search for …”, “play music …”, “play … on spotify”, “pause”, “next track”, “what's playing”\n"
+           "- **Timers:** “timer for 5 minutes”, “remind me in an hour to call mom”, “wake me at 7:30”\n"
+           "- **Notes and memory:** “take a note …”, “show my notes”, “remember that …”, “forget everything”\n"
+           "- **Useful:** “what is 25 times 4”, “weather in Paris”, “roll a dice”, “take a screenshot”, “what's on my screen”\n"
+           "- **Computer:** “check my computer”, “lock the computer”, “minimize all”, “close window”, “computer volume up”\n"
+           "- **Voice:** “speak faster”, “volume up”, “turn off voice”\n"
+           "- **Updates:** “check for updates”, “update yourself”, “what version are you”\n"
+           "- **Everything else:** just ask, like with any AI")
+
+
+def en_to_ru(raw):
+    """Английская команда → русская (дальше её понимают обычные обработчики). Если не команда, возвращает текст как есть."""
+    t = re.sub(r"^\s*(?:hey,?\s+|ok,?\s+)?nova[,:!]?\s+", "", raw.strip(), flags=re.I).strip(" .!?,")
+    if not t:
+        return raw
+    for rx, fn in EN_CMD:
+        m = rx.fullmatch(t)
+        if m:
+            r = fn(m)
+            if r:
+                return r
+    return raw
+
+
+def proc_windows():
+    """[(заголовок, имя exe)] видимых окон: нужно, чтобы понять, что играет в Spotify или на YouTube."""
+    out = []
+    try:
+        u = ctypes.windll.user32
+        u.IsWindowVisible.argtypes = u.GetWindowTextLengthW.argtypes = [ctypes.c_void_p]
+        u.GetWindowTextW.argtypes = [ctypes.c_void_p, ctypes.c_wchar_p, ctypes.c_int]
+        u.GetWindowThreadProcessId.argtypes = [ctypes.c_void_p, ctypes.POINTER(ctypes.c_ulong)]
+
+        @ctypes.WINFUNCTYPE(ctypes.c_bool, ctypes.c_void_p, ctypes.c_void_p)
+        def cb(h, _):
+            try:
+                if u.IsWindowVisible(h) and u.GetWindowTextLengthW(h):
+                    buf = ctypes.create_unicode_buffer(300); u.GetWindowTextW(h, buf, 300)
+                    pid = ctypes.c_ulong(0); u.GetWindowThreadProcessId(h, ctypes.byref(pid))
+                    out.append((buf.value, psutil.Process(pid.value).name()))
+            except Exception:
+                pass
+            return True
+        u.EnumWindows(cb, 0)
+    except Exception:
+        pass
+    return out
+
+
 # ---------- память и настройки ----------
 class Memory:
     FILE = HOME / "memory.json"
@@ -453,6 +882,7 @@ class Memory:
     def __init__(self):
         self.lock = threading.RLock()
         self.d = {"facts": [], "requests": [], "history": [], "cfg": {}}
+        fresh = not self.FILE.exists()
         try: self.d.update(json.loads(self.FILE.read_text("utf-8")))
         except Exception: pass
         old = {k: self.d[k] for k in ("voice", "rate") if k in self.d}          # миграция со старой версии
@@ -460,6 +890,9 @@ class Memory:
         if self.cfg.get("ver", 0) < 6:        # миграция: отклик на имя включён по умолчанию, рабочая папка — настоящий рабочий стол
             self.cfg.update(wake=True, work_dir=DEFAULT_CFG["work_dir"])
         self.cfg["ver"] = DEFAULT_CFG["ver"]
+        if "ui_lang" not in self.cfg:        # язык интерфейса: на свежей установке по языку Windows, у старых пользователей остаётся русский
+            self.cfg["ui_lang"] = "en" if (fresh and sys_lang() != "ru") else "ru"
+            if self.cfg["ui_lang"] == "en": self.cfg.update(voice="Ava · multilingual", lang="en-US", name="Nova")
         self.d["cfg"] = self.cfg
 
     def save(self):
@@ -637,6 +1070,8 @@ class Orb(QWidget):
     def paintEvent(self, e):
         a = self.app; p = QPainter(self); p.setRenderHint(QPainter.RenderHint.Antialiasing)
         cx, cy = self.width() / 2, self.height() / 2; R = min(60, self.height() / 2 - 22)
+        skin = a.mem.cfg.get("skin", "Волны")
+        if skin != "Волны": return self.paint_skin(p, skin, cx, cy, R)
         pk, vi, cn = a.theme
         acc = {"idle": vi, "waiting": vi, "listening": cn, "thinking": vi, "speaking": pk}.get(a.state_, vi)
         sp = 2.6 if a.state_ == "thinking" else 1
@@ -657,6 +1092,45 @@ class Orb(QWidget):
                 p.setPen(pen); p.setBrush(Qt.BrushStyle.NoBrush); p.drawPath(path)
 
 
+    def paint_skin(self, p, skin, cx, cy, R):
+        a = self.app; pk, vi, cn = a.theme
+        acc = {"listening": cn, "speaking": pk}.get(a.state_, vi)
+        sp = 2.6 if a.state_ == "thinking" else 1
+        rr = R * 2.0 * (1 + self.amp * .5)
+        g = QRadialGradient(cx, cy, rr); c0, c1 = QColor(acc), QColor(acc)
+        c0.setAlpha(int(min(255, 70 + self.amp * 400))); c1.setAlpha(0); g.setColorAt(0, c0); g.setColorAt(1, c1)
+        p.setPen(Qt.PenStyle.NoPen); p.setBrush(QBrush(g)); p.drawEllipse(QPointF(cx, cy), rr, rr)
+        if skin == "Кольцо":
+            for i, col in enumerate(a.theme):
+                c = QColor(col); c.setAlpha(255 - i * 55)
+                p.setPen(QPen(c, 3.4 - i * .7)); p.setBrush(Qt.BrushStyle.NoBrush)
+                r = R * (1 + self.amp * (.6 + .25 * math.sin(self.t * (2 + i) * sp)) + i * .12)
+                p.drawEllipse(QPointF(cx, cy), r, r)
+        elif skin == "Ядро":
+            r = R * (0.72 + self.amp * 0.9)
+            g2 = QRadialGradient(cx - r * .3, cy - r * .35, r * 1.5)
+            g2.setColorAt(0, QColor("#ffffff")); g2.setColorAt(.3, QColor(cn)); g2.setColorAt(.75, QColor(vi)); g2.setColorAt(1, QColor(pk))
+            p.setPen(Qt.PenStyle.NoPen); p.setBrush(QBrush(g2)); p.drawEllipse(QPointF(cx, cy), r, r)
+        elif skin == "Орбита":
+            n = 14
+            p.setPen(Qt.PenStyle.NoPen)
+            for i in range(n):
+                ang = i / n * 2 * math.pi + self.t * .9 * sp
+                rad = R * (1 + self.amp * math.sin(self.t * 3 + i))
+                s = 3.5 + self.amp * 14
+                p.setBrush(QBrush(QColor(a.theme[i % 3])))
+                p.drawEllipse(QPointF(cx + math.cos(ang) * rad, cy + math.sin(ang) * rad), s, s)
+        else:    # Спектр
+            n = 56
+            for i in range(n):
+                ang = i / n * 2 * math.pi
+                wave = abs(math.sin(ang * 5 + self.t * 4 * sp) * math.cos(ang * 3 - self.t * 2.3 * sp))
+                ln = 4 + R * 0.6 * min(1.0, self.amp * 2.6) * (0.25 + wave)
+                pen = QPen(QColor(a.theme[i % 3]), 3.2); pen.setCapStyle(Qt.PenCapStyle.RoundCap); p.setPen(pen)
+                p.drawLine(QPointF(cx + math.cos(ang) * (R + 2), cy + math.sin(ang) * (R + 2)),
+                           QPointF(cx + math.cos(ang) * (R + 2 + ln), cy + math.sin(ang) * (R + 2 + ln)))
+
+
 class Entry(QLineEdit):
     def __init__(self, app): super().__init__(); self.app = app
 
@@ -670,6 +1144,7 @@ class App(QMainWindow):
     def __init__(self):
         super().__init__()
         self.bridge = Bridge(); self.mem = Memory(); c = self.mem.cfg
+        set_ui_lang(c.get("ui_lang", "ru"))
         self.setWindowTitle(c["name"]); self.setMinimumSize(420, 560); self.setAcceptDrops(True)
         if resource("icon.png").exists(): self.setWindowIcon(QIcon(str(resource("icon.png"))))
         self.resize(500, 820)
@@ -744,17 +1219,104 @@ class App(QMainWindow):
         self.tray = None
         if QSystemTrayIcon.isSystemTrayAvailable():
             self.tray = QSystemTrayIcon(self.windowIcon(), self); self.tray.setToolTip(c["name"])
-            m = QMenu(); a1 = QAction("Открыть", self); a1.triggered.connect(self.show_front); m.addAction(a1)
-            a2 = QAction("Выход", self); a2.triggered.connect(self.quit_app); m.addAction(a2)
+            m = QMenu(); a1 = QAction(tr("Открыть"), self); a1.triggered.connect(self.show_front); m.addAction(a1)
+            a2 = QAction(tr("Выход"), self); a2.triggered.connect(self.quit_app); m.addAction(a2)
             self.tray.setContextMenu(m); self._tray_menu = m
             self.tray.activated.connect(lambda r: r == QSystemTrayIcon.ActivationReason.Trigger and self.show_front()); self.tray.show()
 
         name = next((f[6:] for f in self.mem.d["facts"] if f.lower().startswith("зовут ")), "")
         if c["restore_chat"]: self.restore_last()
         self.head(c["name"]); self.put(f"Привет{', ' + name if name else ''}! Спроси что угодно или скажи «что ты умеешь».\n\n", "ai")
+        self.show_whatsnew()
         self.set_state("idle"); QTimer.singleShot(2000, self.autosave_tick)
         threading.Thread(target=self.wake_loop, daemon=True).start()
         threading.Thread(target=self.update_loop, daemon=True).start()
+        threading.Thread(target=self.hotkey_loop, daemon=True).start()
+        retranslate(self)
+
+    # ---------- горячая клавиша, «что нового», перезапуск, музыка ----------
+    def hotkey_loop(self):
+        """Глобальная горячая клавиша: работает, даже когда окно Новы свёрнуто или спрятано в трей."""
+        if os.name != "nt" or not self.mem.cfg.get("hotkey_on", True): return
+        spec = str(self.mem.cfg.get("hotkey", "ctrl+alt+space")).lower().replace(" ", "")
+        mods, key = 0x4000, None            # MOD_NOREPEAT
+        for part in spec.split("+"):
+            if part in ("ctrl", "control"): mods |= 2
+            elif part == "alt": mods |= 1
+            elif part == "shift": mods |= 4
+            elif part in ("win", "windows"): mods |= 8
+            else: key = vk_of(part)
+        if not key or not (mods & 0xF): return
+        try:
+            u = ctypes.windll.user32
+            if not u.RegisterHotKey(None, 0x4E56, mods, key):
+                self.ui(self.put, f"Горячая клавиша {spec} занята другой программой. Выбери другую в настройках.\n\n", "time"); return
+            from ctypes import wintypes
+            msg = wintypes.MSG()
+            while u.GetMessageW(ctypes.byref(msg), None, 0, 0) > 0:
+                if msg.message == 0x0312 and msg.wParam == 0x4E56: self.ui(self.hotkey_pressed)
+        except Exception as ex:
+            log_err("hotkey", ex)
+
+    def hotkey_pressed(self):
+        threading.Thread(target=self.chime, daemon=True).start()
+        self.orb_click()
+
+    def save_whatsnew(self, info):
+        try:
+            HOME.mkdir(parents=True, exist_ok=True)
+            (HOME / "whatsnew.json").write_text(json.dumps({"version": info.get("version"), "notes": info.get("notes") or ""}, ensure_ascii=False), "utf-8")
+        except Exception as ex:
+            log_err("whatsnew", ex)
+
+    def show_whatsnew(self):
+        f = HOME / "whatsnew.json"
+        try:
+            if not f.exists(): return
+            d = json.loads(f.read_text("utf-8"))
+            if vtuple(d.get("version", "")) > vtuple(VERSION): return      # обновление не дошло: оставляем на потом
+            if vtuple(d.get("version", "")) == vtuple(VERSION):
+                notes = (d.get("notes") or "").strip() or "- Мелкие улучшения и исправления"
+                self.md(f"**Что нового в версии {VERSION}**\n" + notes)
+            f.unlink(missing_ok=True)
+        except Exception as ex:
+            log_err("whatsnew", ex)
+
+    def restart_app(self):
+        env = {k: v for k, v in os.environ.items() if not k.startswith(("_MEI", "_PYI"))}
+        env["PYINSTALLER_RESET_ENVIRONMENT"] = "1"
+        cmd = [str(SELF), "--restarted"] if FROZEN else [sys.executable, str(SELF), "--restarted"]
+        try:
+            subprocess.Popen(cmd, env=env, cwd=str(SELF.parent), close_fds=True, creationflags=0x00000208 if os.name == "nt" else 0,
+                             stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        except Exception as ex:
+            log_err("restart", ex); return
+        self.quit_app()
+
+    def now_playing(self):
+        for ttl, exe in proc_windows():
+            if exe.lower() == "spotify.exe" and " - " in ttl and ttl.strip() not in ("Spotify", "Spotify Free", "Spotify Premium"):
+                return f"Сейчас играет в Spotify: {ttl.strip()}."
+        for ttl, exe in proc_windows():
+            if m := re.match(r"(.+?) - YouTube(?: Music)?(?: - .+)?$", ttl):
+                return f"На YouTube: {m[1].strip()}."
+        return "Не вижу, что сейчас играет: нужен открытый Spotify или вкладка YouTube."
+
+    def extra_music(self, t, raw):
+        """Музыка: что играет, поиск в Spotify и на YouTube. Пауза, следующий и предыдущий трек обрабатывает extra()."""
+        if os.name != "nt": return None
+        if re.search(r"что\s+(?:сейчас\s+)?играет|что\s+за\s+(?:песня|трек|музыка)|какая\s+(?:сейчас\s+)?(?:песня|музыка)|название\s+(?:песни|трека)", t):
+            return self.now_playing()
+        m = re.match(r"(?:включи|поставь|запусти|найди)\s+(.+?)\s+(?:в|на|через)\s+(?:спотифай|спотифае|спотике|спотик|spotify)$", t) \
+            or re.match(r"(?:спотифай|spotify)[, ]+(?:включи|найди|поставь)\s+(.+)", t)
+        if m:
+            q = m[1].strip()
+            try: os.startfile("spotify:search:" + quote(q))
+            except Exception: webbrowser.open("https://open.spotify.com/search/" + quote(q))
+            return f"Ищу в Spotify: {q}."
+        if m := re.match(r"(?:включи|поставь|запусти)\s+(.+?)\s+(?:в|на)\s+(?:ютубе|ютуб|youtube)(?:\s+музык\w+)?$", t):
+            webbrowser.open("https://www.youtube.com/results?search_query=" + quote(m[1])); return f"Включаю: {m[1]}."
+        return None
 
     # ---------- потокобезопасный UI ----------
     def ui(self, fn, *a): self.bridge.call.emit(lambda: fn(*a))
@@ -867,7 +1429,7 @@ class App(QMainWindow):
         txt = {"idle": "Нажми на шар и говори или пиши внизу", "listening": "Слушаю… (Esc — отмена)", "thinking": "Думаю…",
                "waiting": f"Жду обращения: скажи «{self.mem.cfg['name']}…»  (или пиши внизу)",
                "speaking": "Говорю… (Esc — пропустить)"}[s]
-        self.ui(lambda: self.status.setText(txt))
+        self.ui(lambda: self.status.setText(tr(txt)))
 
     # ---------- вывод в чат ----------
     def scroll_end(self):
@@ -876,7 +1438,7 @@ class App(QMainWindow):
     def put(self, text, *tags, href=None):
         sb = self.tx.verticalScrollBar(); stick = sb.value() >= sb.maximum() - 8
         cur = QTextCursor(self.tx.document()); cur.movePosition(QTextCursor.MoveOperation.End)
-        cur.insertText(text, self.fmt(tags, href))          # отдельный курсор: выделение пользователя не сбивается
+        cur.insertText(text if "me" in tags else tr(text), self.fmt(tags, href))          # отдельный курсор: выделение пользователя не сбивается
         if stick: QTimer.singleShot(0, self.scroll_end)
 
     def head(self, who):
@@ -961,6 +1523,7 @@ class App(QMainWindow):
         m.addAction("Поиск по чату   Ctrl+F", self.open_find)
         m.addAction("Сохранить чат…", self.save_chat)
         m.addAction("Очистить чат   Ctrl+L", self.clear_chat)
+        for _a in m.actions(): _a.setText(tr(_a.text()))
         m.exec(self.tx.mapToGlobal(pos))
 
     def speak_async(self, text):
@@ -1037,7 +1600,7 @@ class App(QMainWindow):
         if len(city) > 3 and city[-1] in "еуыи": cands += [city[:-1] + x for x in ("а", "я", "ь", "")]    # «в Москве» → «Москва»
         for q in dict.fromkeys(cands):
             try:
-                r = requests.get("https://wttr.in/" + quote(q), params={"format": "%l|%C|%t|%f|%w|%h", "lang": "ru", "m": "1"},
+                r = requests.get("https://wttr.in/" + quote(q), params={"format": "%l|%C|%t|%f|%w|%h", "lang": UI_LANG, "m": "1"},
                                  headers={"User-Agent": "curl/8.0"}, timeout=7)
             except requests.RequestException: return "Не получилось узнать погоду — проверь интернет."
             parts = [x.strip() for x in r.text.split("|")]
@@ -1113,7 +1676,7 @@ class App(QMainWindow):
 
     def flash(self, msg, ms=2500):
         def go():
-            self.status.setText(msg); QTimer.singleShot(ms, lambda: self.set_state(self.state_))
+            self.status.setText(tr(msg)); QTimer.singleShot(ms, lambda: self.set_state(self.state_))
         self.ui(go)
 
     # ---------- вложения: до 10 фото и до 10 файлов ----------
@@ -1298,6 +1861,7 @@ class App(QMainWindow):
             if not silent and not self.confirm(f"Обновить Нову {VERSION} → {info['version']}?\nПриложение перезапустится.", force=True):
                 return "Хорошо, не обновляю."
             self.flash("Скачиваю обновление…", 60000)
+            self.save_whatsnew(info)
             err = self.install_update(info)
             if err: return err
             self.ui(self.quit_app); return ""
@@ -1310,7 +1874,7 @@ class App(QMainWindow):
         threading.Thread(target=run, daemon=True).start()
 
     def show_update(self, info):
-        self.upd_btn.setText(f"⬆ Обновить до {info['version']}"); self.upd_btn.show()
+        self.upd_btn.setText(tr(f"⬆ Обновить до {info['version']}")); self.upd_btn.show()
         self.put(f"Доступно обновление {VERSION} → {info['version']}. Нажми «⬆ Обновить» вверху или скажи «обнови себя».\n\n", "time")
 
     def update_loop(self):
@@ -1566,7 +2130,7 @@ class App(QMainWindow):
 
         def ask():
             self.show_front()
-            return QMessageBox.question(self, "Подтверждение", msg) == QMessageBox.StandardButton.Yes
+            return QMessageBox.question(self, tr("Подтверждение"), tr(msg)) == QMessageBox.StandardButton.Yes
         return bool(self.on_main(ask, timeout=90))
 
     def extra2(self, t, raw):
@@ -1823,6 +2387,7 @@ class App(QMainWindow):
         except Exception: pass
 
     def say(self, speak, card=None):
+        speak = tr(speak); card = tr(card) if card else card
         sp = self.speaker; sp.begin()
         try:
             for s in split_long(sentences(speak)): sp.feed(s)
@@ -1991,6 +2556,9 @@ class App(QMainWindow):
         self.cfg_set(key, max(lo, min(hi, int(self.mem.cfg[key]) + delta))); return msg
 
     def route(self, raw):
+        if UI_LANG == "en":
+            raw = en_to_ru(raw)
+            if raw == "__help__": return EN_HELP
         n = re.escape(self.mem.cfg["name"].lower())
         t = re.sub(rf"^({n}|эй {n}|слушай)[, ]+", "", raw.lower().strip(" .!?,"))
         d = self.mem.d
@@ -2015,7 +2583,7 @@ class App(QMainWindow):
         if re.search(r"(выключи|отключи) озвучку", t): self.cfg_set("tts", False); return "Озвучка выключена, отвечаю текстом."
         if re.search(r"включи озвучку", t): self.cfg_set("tts", True); return "Озвучка включена."
         if re.search(r"настройки\s+нов", t): self.ui(self.open_settings); return "Открываю настройки."
-        for handler in (self.extra, self.extra2, self.extra3):      # таймеры/медиа/обновления → файлы/зрение → мышь/столы/система
+        for handler in (self.extra_music, self.extra, self.extra2, self.extra3):      # таймеры/медиа/обновления → файлы/зрение → мышь/столы/система
             if (r := handler(t, raw)) is not None: return r         # (extra идёт первым: иначе «останови музыку» ловило «закрой программу»)
         if re.search(r"диагностик|проверь (пк|комп)|состояни. (пк|комп)|характеристик|тормозит", t): return self.diag()
         if m := re.match(r"(включи|поставь|запусти)\s+(музык\w*|песн\w*|трек)\s*(.*)", t):
@@ -2103,7 +2671,7 @@ class App(QMainWindow):
         if not c["ai"]: return "ИИ отключён в настройках."
         hist, content, n_img = self.user_content(text, att)
         h = d["history"]; h.append({"role": "user", "content": hist})
-        sysm = (f"Ты {c['name']}. {PERSONAS.get(c['persona'], PERSONAS['Дружелюбная'])} Говоришь по-русски. Сначала дай устный ответ "
+        sysm = (f"Ты {c['name']}. {PERSONAS.get(c['persona'], PERSONAS['Дружелюбная'])} {'Answer in English.' if UI_LANG == 'en' else 'Говоришь по-русски.'} Сначала дай устный ответ "
                 f"({STYLES.get(c['ai_style'], STYLES['Коротко'])}, без markdown и эмодзи). Если нужны списки, шаги, код или подробности — "
                 "после ответа поставь отдельную строку --- и оформи подробности в markdown (**жирный**, - списки, `код`, блоки ```). "
                 "Эта часть не озвучивается. Сейчас " + time.strftime("%d.%m.%Y %H:%M") + ".")
@@ -2272,10 +2840,20 @@ class App(QMainWindow):
 
         sec("Интерфейс")
         entry("Имя помощника", "name")
+        m_l = QComboBox(); m_l.addItems(["Русский", "English"]); m_l.setFixedWidth(230)
+        m_l.setCurrentText("English" if c.get("ui_lang") == "en" else "Русский")
+        m_l.currentTextChanged.connect(lambda v: (self.cfg_set("ui_lang", "en" if v == "English" else "ru"),
+                                                  self.flash("Перезапусти Нову, чтобы сменить язык / Restart Nova to switch language", 6000)))
+        line("Язык интерфейса / Interface language", m_l)
         entry("Город для погоды", "city")
         menu("Цвет шара", "theme", list(THEMES))
+        menu("Вид шара (скин)", "skin", ["Волны", "Кольцо", "Ядро", "Орбита", "Спектр"])
+        menu("Тема окна (после перезапуска)", "ui_theme", list(UI_PALETTES))
+        btn("Перезапустить Нову", self.restart_app)
         switch("Автокопирование выделенного текста", "copy_on_select")
         switch("Закрытие окна сворачивает в трей", "tray_close")
+        switch("Глобальная горячая клавиша для голоса", "hotkey_on")
+        entry("Сочетание клавиш (после перезапуска)", "hotkey")
         slider("Размер шрифта", "font_size", 9, 18)
         slider("Прозрачность окна, %", "opacity", 50, 100)
         switch("Поверх всех окон", "topmost")
@@ -2334,6 +2912,7 @@ class App(QMainWindow):
         btn("Сбросить настройки", self.reset_cfg)
         tip = QLabel("Голос выбирается в главном окне. Имя применится после перезапуска."); tip.setStyleSheet(f"color:{MUTE};"); tip.setWordWrap(True)
         col.addWidget(tip); col.addStretch()
+        retranslate(w)
         w.show()
 
     def test_ai(self):
