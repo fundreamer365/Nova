@@ -2,7 +2,7 @@ import sys, os
 if sys.stdout is None: sys.stdout = open(os.devnull, "w")     # exe без консоли: print() не должен падать
 if sys.stderr is None: sys.stderr = open(os.devnull, "w")
 
-VERSION = "7.1.0"                      # ← именно эту строку читает самообновление; при выпуске правь её и тег релиза (v7.0.0)
+VERSION = "7.1.1"                      # ← именно эту строку читает самообновление; при выпуске правь её и тег релиза (v7.0.0)
 REPO = "fundreamer365/Nova"
 
 from difflib import SequenceMatcher
@@ -433,7 +433,9 @@ def log_err(where, ex):
     try:
         HOME.mkdir(parents=True, exist_ok=True)
         with open(HOME / "nova.log", "a", encoding="utf-8") as f:
-            f.write(f"{time.strftime('%Y-%m-%d %H:%M:%S')} [{where}] {type(ex).__name__}: {ex}\n")
+            import traceback
+            tb = "".join(traceback.format_tb(ex.__traceback__))[-700:] if getattr(ex, "__traceback__", None) else ""
+            f.write(f"{time.strftime('%Y-%m-%d %H:%M:%S')} [{where}] {type(ex).__name__}: {ex}\n{tb}")
     except Exception: pass
 
 
@@ -875,6 +877,27 @@ def proc_windows():
     return out
 
 
+def recognize_pcm(audio, lang):
+    """Распознавание через тот же сервис Google, но без flac.exe: отправляем «сырой» звук (PCM 16 бит)."""
+    try:
+        r = requests.post("http://www.google.com/speech-api/v2/recognize",
+                          params={"client": "chromium", "lang": lang, "key": "AIzaSyBOti4mM-6x9WDnZIjIeyEU21OpBXqWBgw", "pFilter": 0},
+                          headers={"Content-Type": f"audio/l16; rate={audio.sample_rate}"}, data=audio.frame_data, timeout=15)
+    except requests.RequestException as ex:
+        raise sr.RequestError(str(ex))
+    if r.status_code != 200:
+        raise sr.RequestError(f"HTTP {r.status_code}")
+    for line in r.text.split("\n"):
+        if not line.strip(): continue
+        try: res = json.loads(line).get("result", [])
+        except ValueError: continue
+        if res and res[0].get("alternative"):
+            alts = res[0]["alternative"]
+            best = max(alts, key=lambda a: a.get("confidence", 0)) if any("confidence" in a for a in alts) else alts[0]
+            if best.get("transcript"): return best["transcript"]
+    raise sr.UnknownValueError()
+
+
 # ---------- память и настройки ----------
 class Memory:
     FILE = HOME / "memory.json"
@@ -968,6 +991,24 @@ class Speaker:
         except Exception: pass
         return bytes(audio), words
 
+    def sapi_say(self, text):
+        """Запасной голос Windows: работает без интернета, если облачная озвучка недоступна."""
+        if os.name != "nt": return
+        try:
+            HOME.mkdir(parents=True, exist_ok=True)
+            f = HOME / "sapi.txt"; f.write_text(tts_clean(text), "utf-8")
+            vol = int(max(0, min(100, self.mem.cfg["volume"])))
+            culture = "ru" if self.mem.cfg.get("ui_lang", "ru") == "ru" else "en"
+            ps = ("Add-Type -AssemblyName System.Speech; $s = New-Object System.Speech.Synthesis.SpeechSynthesizer; "
+                  f"$s.Volume = {vol}; "
+                  f"$v = $s.GetInstalledVoices() | Where-Object {{ $_.VoiceInfo.Culture.Name -like '{culture}*' }} | Select-Object -First 1; "
+                  "if ($v) { $s.SelectVoice($v.VoiceInfo.Name) }; "
+                  f"$s.Speak([IO.File]::ReadAllText('{f}', [Text.Encoding]::UTF8))")
+            subprocess.run(["powershell", "-NoProfile", "-Command", ps], creationflags=0x08000000, timeout=90,
+                           stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        except Exception as ex:
+            log_err("sapi", ex)
+
     def begin(self): self.skip.clear(); self.err = False
 
     def feed(self, s):
@@ -998,10 +1039,12 @@ class Speaker:
                     if self.skip.is_set(): b.cancel()
                     else:
                         try: audio, words = b.result(timeout=40)
-                        except Exception: self.err = True
+                        except Exception as ex: self.err = True; log_err("tts", ex)
                 if first: app.ui(app.head, app.mem.cfg["name"]); app.set_state("speaking"); first = False
                 if audio and not self.skip.is_set(): self.play(a, audio, words)
-                else: app.ui(app.put, " ".join(a) + " ", "ai")
+                else:
+                    app.ui(app.put, " ".join(a) + " ", "ai")
+                    if audio is None and self.err and b is not None and not self.skip.is_set(): self.sapi_say(" ".join(a))
             except Exception: pass
             finally:
                 if kind == "e": b.set()          # поток озвучки не умирает от одной ошибки и никогда не оставляет вызывающего ждать вечно
@@ -1014,8 +1057,8 @@ class Speaker:
         try:
             pygame.mixer.music.set_volume(max(0, min(1, c["volume"] / 100)))
             pygame.mixer.music.load(io.BytesIO(audio), "mp3"); pygame.mixer.music.play()
-        except Exception:
-            self.err = True
+        except Exception as ex:
+            self.err = True; log_err("play", ex)
             if sync: app.ui(app.put, " ".join(tokens) + " ", "ai")
             return
         t0, i = time.time(), 0
@@ -1317,6 +1360,15 @@ class App(QMainWindow):
         if m := re.match(r"(?:включи|поставь|запусти)\s+(.+?)\s+(?:в|на)\s+(?:ютубе|ютуб|youtube)(?:\s+музык\w+)?$", t):
             webbrowser.open("https://www.youtube.com/results?search_query=" + quote(m[1])); return f"Включаю: {m[1]}."
         return None
+
+    def recognize(self, audio, lang):
+        try:
+            return recognize_pcm(audio, lang)
+        except sr.UnknownValueError:
+            raise
+        except Exception as ex:
+            log_err("recognize-pcm", ex)
+            return self.rec.recognize_google(audio, language=lang)      # старый способ (через flac) как запасной
 
     # ---------- потокобезопасный UI ----------
     def ui(self, fn, *a): self.bridge.call.emit(lambda: fn(*a))
@@ -2519,7 +2571,7 @@ class App(QMainWindow):
                     audio = self.record(wait=4 if wake else None)
                     if audio is None: return
                 self.set_state("thinking")
-                try: text = self.rec.recognize_google(audio, language=c["lang"])
+                try: text = self.recognize(audio, c["lang"])
                 except sr.UnknownValueError:
                     if not wake: self.say("Не расслышала, повтори, пожалуйста.")
                     return
@@ -2539,7 +2591,7 @@ class App(QMainWindow):
             if isinstance(res, tuple): self.say(*res)
             elif res: self.say(res)
         except Exception as e:
-            failed = True
+            failed = True; log_err("pipeline", e)
             if not wake or time.time() - self._werr > 60:
                 self._werr = time.time(); self.ui(self.put, f"Ошибка: {e}\n\n", "time")
             if wake: time.sleep(3)
